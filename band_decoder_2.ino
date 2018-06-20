@@ -34,6 +34,7 @@ Support inputs
   * ICOM ACC voltage
   * YAESU CAT - TRX since 2008 ascii format
   * YAESU CAT old binary format (tested on FT-817)
+  * IP relay with automatic pair by rotary encoder ID https://remoteqth.com/wiki/index.php?page=IP+Switch+with+ESP32-GATEWAY
 
 Outputs
   * 14 local relay
@@ -43,28 +44,23 @@ Outputs
   * Icom CIV
   * Kenwood CAT
   * YAESU CAT - TRX since 2008 ascii format
+  * IP relay with automatic pair by rotary encoder ID
 
   Major changes
   -------------
   - LCD support
   - Icom with request mode
   - PTT input block changes during transmit
-  - own board with all smd parts (without arduino nano module)
+  - own board with all smd parts including arduino nano module
   - without relays, only control driver outputs
   - optional ethernet module
 
   Changelog
   ---------
+  2018-06 support IP relay
   2018-05 mk2 initial release
 
 */
-//=====[ Hardware ]=============================================================================================
-
-// #define EthModule          // enable Ethernet module if installed
-// #define __USE_DHCP__       // Uncoment to Enable DHCP
-#define LCD                   // Uncoment to Enable I2C LCD
-#define LcdI2Caddress  0x3F   // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
-
 //=====[ Inputs ]=============================================================================================
 
 // #define YAESU_BCD          // TTL BCD in A
@@ -83,6 +79,15 @@ Outputs
 // #define ICOM_CIV_OUT       // send frequency to CIV ** you must set TRX CIV_ADRESS, and disable ICOM_CIV **
 // #define KENWOOD_PC_OUT     // send frequency to RS232 CAT ** for operation must disable REQUEST **
 // #define YAESU_CAT_OUT      // send frequency to RS232 CAT ** for operation must disable REQUEST **
+
+//=====[ Hardware ]=============================================================================================
+
+#define LCD                   // Uncoment to Enable I2C LCD
+#define LcdI2Caddress  0x3F   // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
+// #define EthModule             // enable Ethernet module if installed
+#define __USE_DHCP__          // enable DHCP
+byte BOARD_ID = 0x04;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace by P6 board encoder
+// #define BcdToIP               // control IP relay in BCD format
 
 //=====[ Settings ]===========================================================================================
 
@@ -163,6 +168,8 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  1,  0,    0,  0,  0,  0,  0,  0,
 
 //============================================================================================================
 
+// #define SERIAL_debug
+
 #if defined(LCD)
   #include <Wire.h>
   #include <LiquidCrystal_I2C.h>
@@ -195,17 +202,19 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  1,  0,    0,  0,  0,  0,  0,  0,
 #if defined(EthModule)
   //  #include <util.h>
   #include <Ethernet2.h>
-  #include <Dhcp.h>
-  #include <EthernetServer.h>
+  #include <EthernetUdp2.h>
+  // #include <Dhcp.h>
+  // #include <EthernetServer.h>
   #include <SPI.h>
-  byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
-  IPAddress ip(192, 168, 1, 220);         // IP
+  byte LastMac = 0x00 + BOARD_ID;
+
+  byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, LastMac};
+  IPAddress ip(192, 168, 1, 222);         // IP
   IPAddress gateway(192, 168, 1, 200);    // GATE
   IPAddress subnet(255, 255, 255, 0);     // MASK
   IPAddress myDns(8, 8, 8, 8);            // DNS (google pub)
-  EthernetServer server(80);              // server PORT
+  EthernetServer server(80);              // Web server PORT
   String HTTP_req;
-  byte BOARD_ID;
 
   unsigned int UdpCommandPort = 88;       // local UDP port listen to command
   #define UDP_TX_PACKET_MAX_SIZE 40       // MIN 30
@@ -219,10 +228,9 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  1,  0,    0,  0,  0,  0,  0,  0,
   byte DetectedRemoteSw[16][5];             // detect by RX broadcast packet - storage by ID (ID=rows)
   int BandDecoderChange    = 0;             // If band change, send query packet to Remote IP switch
   long RemoteSwLatency[2];                  // start, stop mark
-  byte RemoteSwLatencyAnsw = 1;             // answer (offline) detect
+  byte RemoteSwLatencyAnsw = 0;             // answer (offline) detect
   byte TxUdpBuffer[10];
   long IpTimeout[1][2] = {0, 60000};          // UDP Broadcast packet [8][0-timer/1-timeout]
-
 #endif
 
 // PINOUTS
@@ -344,16 +352,6 @@ void setup() {
     pinMode(SequencerPin, OUTPUT);
   #endif
 
-  #if defined(EthModule)
-    pinMode(Id1Pin, INPUT);
-      digitalWrite(Id1Pin, INPUT_PULLUP);
-    pinMode(Id2Pin, INPUT);
-      digitalWrite(Id2Pin, INPUT_PULLUP);
-    pinMode(Id3Pin, INPUT);
-      digitalWrite(Id3Pin, INPUT_PULLUP);
-    GetBoardId();
-  #endif
-
   pinMode(PttDetectorPin, INPUT);
     digitalWrite(PttDetectorPin, HIGH);
 
@@ -382,6 +380,7 @@ void setup() {
 
   #if defined(LCD)
     lcd.backlight();
+    // lcd.begin();
     lcd.init();
     lcd.createChar(0, LockChar);
     lcd.clear();
@@ -419,17 +418,29 @@ void setup() {
   #endif
 
   #if defined(EthModule)
+    pinMode(Id1Pin, INPUT_PULLUP);
+    pinMode(Id2Pin, INPUT_PULLUP);
+    pinMode(Id3Pin, INPUT_PULLUP);
+    GetBoardId();
+    LastMac = 0x00 + BOARD_ID;
+    mac[5] = LastMac;
+
     #if defined __USE_DHCP__
       Ethernet.begin(mac);
     #else
     Ethernet.begin(mac, ip, myDns, gateway, subnet);
     #endif
-    server.begin();
-    #if defined(SERIAL_echo)
-      Serial.print(F("Web server is at http://"));
+
+    #if defined(SERIAL_debug)
+      Serial.print(F("Band decoder MK2 at "));
       Serial.println(Ethernet.localIP());
     #endif
     #if defined(LCD)
+      lcd.clear();
+      lcd.setCursor(1, 0);
+      lcd.print(F("Board Net ID:"));
+      lcd.print(BOARD_ID);
+      delay(1500);
       lcd.clear();
       lcd.setCursor(1, 0);
       lcd.print(F("IP address:"));
@@ -437,22 +448,21 @@ void setup() {
       lcd.print(Ethernet.localIP());
       delay(2500);
       lcd.clear();
-      lcd.setCursor(1, 0);
-      lcd.print(F("Board Net ID:"));
-      lcd.print(BOARD_ID);
-      delay(2500);
     #endif
 
-    // SendBroadcastUdp();
+    // server.begin();                     // Web
+    UdpCommand.begin(UdpCommandPort);   // UDP
 
   #endif
   // ANTname[0] = " [timeout]  ";
   InterruptON(1,1); // ptt, enc
+  SendBroadcastUdp();
 }
 //---------------------------------------------------------------------------------------------------------
 
 void loop() {
-  // EthernetServer();
+  // WebServer();
+
   BandDecoderInput();
   BandDecoderOutput();
   LcdDisplay();
@@ -463,6 +473,8 @@ void loop() {
 }
 
 // SUBROUTINES ---------------------------------------------------------------------------------------------------------
+// RX b:d3;192.168.1.14:88
+// TX UDP broadcast packet [b:s3;] to 192.168.1.255:88
 
 void IncomingUDP(){
   #if defined(EthModule)
@@ -472,10 +484,11 @@ void IncomingUDP(){
       if (UDPpacketSize){
         UdpCommand.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);      // read the packet into packetBufffer
 
-
         //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
         // Switch BROADCAST - STORAGE IP by received ID in 'DetectedRemoteSw' array (rows = Switch ID)
         if (packetBuffer[0] == 'b' && packetBuffer[1] == ':' && packetBuffer[2] == 's' && packetBuffer[4] == ';'){
+          RemoteSwLatency[1] = (millis()-RemoteSwLatency[0])/2; // set latency (half path in ms us/2/1000)
+          RemoteSwLatencyAnsw = 1;           // answer packet received
           IPAddress TmpAddr = UdpCommand.remoteIP();
           // DetectedRemoteSw [(int)packetBuffer[3] - 48] [0]=TmpAddr[0];     // Switch IP addres storage to array
           // DetectedRemoteSw [(int)packetBuffer[3] - 48] [1]=TmpAddr[1];     // (int)packetBuffer[3] - 48 = convert char number to DEC
@@ -487,31 +500,32 @@ void IncomingUDP(){
           DetectedRemoteSw [hexToDecBy4bit(packetBuffer[3])] [2]=TmpAddr[2];
           DetectedRemoteSw [hexToDecBy4bit(packetBuffer[3])] [3]=TmpAddr[3];
           DetectedRemoteSw [hexToDecBy4bit(packetBuffer[3])] [4]=UdpCommand.remotePort();
-          RemoteSwLatencyAnsw = 1;           // answer packet received
 
-          // Serial2.println();
-          // Serial2.print("RX b:s");
-          // Serial2.print(packetBuffer[3]);
-          // Serial2.println(";");
-          // Serial2.println(hexToDecBy4bit(packetBuffer[3]), HEX);
-          //
-          // Serial2.print(packetBuffer[3], DEC);
-          // Serial2.println(" ");
-          // Serial2.println((int)packetBuffer[3] - 48, DEC);
-          //
-          // for (i = 0; i < 16; i++) {
-          //   Serial2.print(i);
-          //   Serial2.print("  ");
-          //   Serial2.print(DetectedRemoteSw [i] [0]);
-          //   Serial2.print(".");
-          //   Serial2.print(DetectedRemoteSw [i] [1]);
-          //   Serial2.print(".");
-          //   Serial2.print(DetectedRemoteSw [i] [2]);
-          //   Serial2.print(".");
-          //   Serial2.print(DetectedRemoteSw [i] [3]);
-          //   Serial2.print(":");
-          //   Serial2.println(DetectedRemoteSw [i] [4]);
-          // }
+          #if defined(SERIAL_debug)
+            Serial.println();
+            Serial.print("RX b:s");
+            // Serial.print(packetBuffer[3]);
+            Serial.print(hexToDecBy4bit(packetBuffer[3]), HEX);
+            Serial.println(";");
+
+            // Serial.print(packetBuffer[3], DEC);
+            // Serial.println(" ");
+            // Serial.println((int)packetBuffer[3] - 48, DEC);
+
+            for (int i = 0; i < 16; i++) {
+              Serial.print(i);
+              Serial.print("  ");
+              Serial.print(DetectedRemoteSw [i] [0]);
+              Serial.print(".");
+              Serial.print(DetectedRemoteSw [i] [1]);
+              Serial.print(".");
+              Serial.print(DetectedRemoteSw [i] [2]);
+              Serial.print(".");
+              Serial.print(DetectedRemoteSw [i] [3]);
+              Serial.print(":");
+              Serial.println(DetectedRemoteSw [i] [4]);
+            }
+          #endif
         }
 
         //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -545,26 +559,91 @@ void IncomingUDP(){
 }
 //-------------------------------------------------------------------------------------------------------
 
+void TxUDP(){
+  #if defined(EthModule)
+    // if detect ip relay
+    if(DetectedRemoteSw[BOARD_ID][4]!=0 && PTT==false){
+      RemoteSwIP = DetectedRemoteSw[BOARD_ID];
+      RemoteSwPort = DetectedRemoteSw[BOARD_ID][4];
+
+      // UDP send to Switch
+      // TxUdpBuffer[0] = B01100100;         // d
+      TxUdpBuffer[0] = B01110011;         // s
+      TxUdpBuffer[1] = B00111010;         // :
+      TxUdpBuffer[2] = 0;
+      TxUdpBuffer[3] = 0;
+      #if defined(BcdToIP)
+        TxUdpBuffer[2] = BAND; //rxShiftInButton[0];  // set buffer
+        TxUdpBuffer[3] = B00111011;         // ;
+      #else
+        if(BAND>0 && BAND<9){
+          TxUdpBuffer[2] = TxUdpBuffer[2] | (1<<BAND-1); // set n-th bit
+        }else if(BAND>0){
+          TxUdpBuffer[3] = TxUdpBuffer[3] | (1<<(BAND-9)); // set n-th bit
+        }
+        TxUdpBuffer[4] = B00111011;         // ;
+      #endif
+      UdpCommand.beginPacket(RemoteSwIP, RemoteSwPort);
+        UdpCommand.write(TxUdpBuffer, sizeof(TxUdpBuffer));   // send buffer
+        RemoteSwLatency[0] = millis(); // set START time mark UDP command latency
+      UdpCommand.endPacket();
+      RemoteSwLatencyAnsw = 0;   // send command, wait to answer
+
+      #if defined(SERIAL_debug)
+        Serial.print("TX ");
+        Serial.print(RemoteSwIP);
+        Serial.print(":");
+        Serial.print(RemoteSwPort);
+        Serial.print(" s:");
+        Serial.print(TxUdpBuffer[2]);
+        Serial.print(TxUdpBuffer[3]);
+        Serial.println(";");
+      #endif
+    }
+  #endif
+}
+//-------------------------------------------------------------------------------------------------------
+
 void SendBroadcastUdp(){
   #if defined(EthModule)
-  InterruptON(0,0); // ptt, enc
-  Serial.print("TX Broadcast ");
-  BroadcastIP = ~Ethernet.subnetMask() | Ethernet.gatewayIP();
-  Serial.print(BroadcastIP);
-  Serial.print(":");
-  Serial.print(BroadcastPort);
+    InterruptON(0,0); // ptt, enc
+    BroadcastIP = ~Ethernet.subnetMask() | Ethernet.gatewayIP();
 
-  UdpCommand.beginPacket(BroadcastIP, BroadcastPort);   // Send to IP and port from recived UDP command
-  // UdpCommand.beginMulticast(UdpCommand.BroadcastIP(), BroadcastPort, ETH.localIP()).
-    UdpCommand.print("b:o");
-    UdpCommand.write(BOARD_ID);
-    UdpCommand.print(";");
-  UdpCommand.endPacket();
-  Serial.print("   ms ");
-  Serial.println(IpTimeout[0][0]);
+    UdpCommand.beginPacket(BroadcastIP, BroadcastPort);   // Send to IP and port from recived UDP command
+    // UdpCommand.beginMulticast(UdpCommand.BroadcastIP(), BroadcastPort, ETH.localIP()).
+      UdpCommand.print("b:d");
+      UdpCommand.print(BOARD_ID);
+      UdpCommand.print(";");
+    UdpCommand.endPacket();
 
-  IpTimeout[0][0] = millis();                      // set time mark
-  InterruptON(1,1); // ptt, enc
+    #if defined(SERIAL_debug)
+      Serial.print("TX Broadcast ");
+      Serial.print(BroadcastIP);
+      Serial.print(":");
+      Serial.print(BroadcastPort);
+      Serial.print(" \"");
+      Serial.print("b:d");
+      Serial.print(BOARD_ID);
+      Serial.print(";");
+      Serial.print("\"  ms ");
+      Serial.println(IpTimeout[0][0]);
+    #endif
+    IpTimeout[0][0] = millis();                      // set time mark
+    InterruptON(1,1); // ptt, enc
+  #endif
+}
+//-------------------------------------------------------------------------------------------------------
+
+void TxBroadcastUdp(String MSG){
+  #if defined(EthModule)
+    InterruptON(0,0); // ptt, enc
+    BroadcastIP = ~Ethernet.subnetMask() | Ethernet.gatewayIP();
+
+    UdpCommand.beginPacket(BroadcastIP, BroadcastPort);   // Send to IP and port from recived UDP command
+      UdpCommand.print(MSG);
+    UdpCommand.endPacket();
+
+    InterruptON(1,1); // ptt, enc
   #endif
 }
 //-------------------------------------------------------------------------------------------------------
@@ -589,17 +668,31 @@ void InterruptON(int ptt, int enc){
 void PttDetector(){   // call from interupt
   digitalWrite(PttOffPin, HIGH);
   PTT = true;
-  LcdNeedRefresh = true;
+  #if defined(LCD)
+    LcdNeedRefresh = true;
+  #endif
   PttTiming[0]=millis();
 }
 //---------------------------------------------------------------------------------------------------------
 
 void PttOff(){
   if(PTT==true && millis()-PttTiming[0] > PttTiming[1] && digitalRead(PttDetectorPin)==HIGH && BAND!=0){
+
+  #if defined(EthModule)
+    if(DetectedRemoteSw[BOARD_ID][4]!=0 && RemoteSwLatencyAnsw==1){
+  #endif
+
     digitalWrite(PttOffPin, LOW);
+    TxBroadcastUdp("PttOff-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
     PTT = false;
-    LcdNeedRefresh = true;
-    // bandSET();               //------------????????
+    #if defined(LCD)
+      LcdNeedRefresh = true;
+    #endif
+
+  #if defined(EthModule)
+    }
+  #endif
+
   }
 }
 
@@ -616,20 +709,21 @@ void FrequencyRequest(){
           Serial.print("IF;");
           Serial.flush();       // Waits for the transmission of outgoing serial data to complete
     #endif
-
     RequestTimeout[0]=millis();
   }
 }
 //---------------------------------------------------------------------------------------------------------
 
-void Space(int MAX, int LENGHT, char CHARACTER){
-  int NumberOfSpace = MAX-LENGHT;
-  if(NumberOfSpace>0){
-    for (int i=0; i<NumberOfSpace; i++){
-      lcd.print(CHARACTER);
+#if defined(LCD)
+  void Space(int MAX, int LENGHT, char CHARACTER){
+    int NumberOfSpace = MAX-LENGHT;
+    if(NumberOfSpace>0){
+      for (int i=0; i<NumberOfSpace; i++){
+        lcd.print(CHARACTER);
+      }
     }
   }
-}
+#endif
 //---------------------------------------------------------------------------------------------------------
 
 void LcdDisplay(){
@@ -637,14 +731,23 @@ void LcdDisplay(){
     if(millis()-LcdRefresh[0]>LcdRefresh[1] || LcdNeedRefresh == true){
       lcd.setCursor(0,0);
       // lcd.print("ANT ");
+
       #if defined(WATCHDOG)
         if((millis() - WatchdogTimeout[0]) > WatchdogTimeout[1]) {
-          lcd.print("* Timeout *");
+          lcd.print("CAT timeout");
         }else{
-      #endif
           lcd.print(String(ANTname[BAND]).substring(0, 11));   // crop up to 7 char
           Space(11, String(ANTname[BAND]).length(), ' ');
-      #if defined(WATCHDOG)
+        }
+      #endif
+
+      #if defined(EthModule)
+        lcd.setCursor(0,0);
+        if(RemoteSwLatencyAnsw==1 || (RemoteSwLatencyAnsw==0 && millis() < RemoteSwLatency[0]+RemoteSwLatency[1]*5)){ // if answer ok, or latency measure nod end
+          lcd.print(String(ANTname[BAND]).substring(0, 11));   // crop up to 7 char
+          Space(11, String(ANTname[BAND]).length(), ' ');
+        }else{
+          lcd.print("NET   n/a  ");
         }
       #endif
 
@@ -656,7 +759,16 @@ void LcdDisplay(){
       lcd.print(BCDmatrixOUT[0][BAND]);
 
       lcd.setCursor(0,1);
+      #if defined(EthModule)
+      if(RemoteSwLatencyAnsw==1 || (RemoteSwLatencyAnsw==0 && millis() < RemoteSwLatency[0]+RemoteSwLatency[1]*5)){ // if answer ok, or latency measure nod end
+      // if(DetectedRemoteSw[BOARD_ID][4]!=0 && (RemoteSwLatencyAnsw==1 && millis() > RemoteSwLatency[0]+RemoteSwLatency[1]*5)){
+        lcd.print("N");
+      }else{
+        lcd.print("!");
+      }
+      #else
       lcd.print("B");
+      #endif
       Space(2, String(BAND).length(), '-');
       lcd.print(BAND);
       lcd.print(" ");
@@ -693,20 +805,22 @@ void LcdDisplay(){
 }
 //---------------------------------------------------------------------------------------------------------
 
-void PrintFreq(){
-  int longer=String(freq/1000).length();
-  if(longer<4){
-    lcd.print(" ");
-    lcd.print(freq);
-  }else{
-    lcd.print(String(freq/1000).substring(0, longer-3));
-    lcd.print(".");
-    lcd.print(String(freq/1000).substring(longer-3, longer));
+#if defined(LCD)
+  void PrintFreq(){
+    int longer=String(freq/1000).length();
+    if(longer<4){
+      lcd.print(" ");
+      lcd.print(freq);
+    }else{
+      lcd.print(String(freq/1000).substring(0, longer-3));
+      lcd.print(".");
+      lcd.print(String(freq/1000).substring(longer-3, longer));
+    }
   }
-}
+#endif
 //---------------------------------------------------------------------------------------------------------
 
-void EthernetServer(){
+void WebServer(){
   #if defined(EthModule)
     EthernetClient client = server.available();
     if (client) {
@@ -780,7 +894,7 @@ void EthernetServer(){
             client.print(F("</span><br>Frequency <span class=\"boxr\">"));
             client.print(freq);
             client.print(F("Hz</span><br>Power voltage: <span class=\"box\">"));
-            client.print(volt(analogRead(VoltagePin)));
+            client.print(volt(analogRead(VoltagePin),ResistorCoeficient));
             client.println(F(" V</span></p>"));
             client.println(F("<p><a href=\".\" onclick=\"window.open( this.href, this.href, 'width=220,height=350,left=0,top=0,menubar=no,location=no,status=no' ); return false;\" > split&#8599;</a></p>"));
             client.println(F("</body></html>"));
@@ -807,13 +921,13 @@ void EthernetServer(){
 #if defined(EthModule)
   void GetBoardId(){
     BOARD_ID = 0;
-    if(digitalRead(Id1Pin)==0){
+    if(analogRead(Id1Pin)<50){  // 17 1023
       BOARD_ID = BOARD_ID | (1<<0);    // Set the n-th bit
     }
-    if(digitalRead(Id2Pin)==0){
+    if(analogRead(Id2Pin)<50){ // 0 170-970
       BOARD_ID = BOARD_ID | (1<<1);    // Set the n-th bit
     }
-    if(digitalRead(Id3Pin)==0){
+    if(analogRead(Id3Pin)<50){  // 0 290-830
       BOARD_ID = BOARD_ID | (1<<2);    // Set the n-th bit
     }
     // if(digitalRead(Id4Pin)==0){
@@ -826,7 +940,7 @@ void EthernetServer(){
 float volt(int raw, float divider) {
   // float voltage = (raw * 5.0) / 1024.0 * ResistorCoeficient;
   float voltage = float(raw) * ArefVoltage * divider / 1023.0;
-  #if defined(serialECHO)
+  #if defined(SERIAL_debug)
     Serial.print("Voltage ");
     Serial.println(voltage);
   #endif
@@ -837,13 +951,15 @@ float volt(int raw, float divider) {
 void DCinMeasure(){
   if (millis() - VoltageRefresh[0] > VoltageRefresh[1]){
     DCinVoltage = volt(analogRead(VoltagePin), ResistorCoeficient);
-    if (DCinVoltage<7){
-      lcd.setCursor(3, 0);
-      lcd.print(" Power LOW!");
-    }else if (DCinVoltage>15){
-      lcd.setCursor(2, 0);
-      lcd.print("Power HIGH!");
-    }
+    #if defined(LCD)
+      if (DCinVoltage<7){
+        lcd.setCursor(3, 0);
+        lcd.print(" Power LOW!");
+      }else if (DCinVoltage>15){
+        lcd.setCursor(2, 0);
+        lcd.print("Power HIGH!");
+      }
+    #endif
     VoltageRefresh[0] = millis();                      // set time mark
   }
 }
@@ -1065,9 +1181,13 @@ void bandSET() {                                               // set outputs by
   if(BAND==0 && previousBAND != 0){    // deactivate PTT
     digitalWrite(PttOffPin, HIGH);
     PTT = true;
-    LcdNeedRefresh = true;
+    #if defined(LCD)
+      LcdNeedRefresh = true;
+    #endif
   }
-  if(PTT==false){
+
+
+  if((PTT==false && previousBAND != 0 ) || (PTT==true && previousBAND == 0)){
     ShiftByte[0] = B00000000;
     ShiftByte[1] = B00000000;
 
@@ -1085,31 +1205,25 @@ void bandSET() {                                               // set outputs by
       #if !defined(YAESU_BCD)
           bcdOut();
       #endif
-      #if defined(EthModule)
-        RemoteSwIP = DetectedRemoteSw[BAND];
-        RemoteSwPort = DetectedRemoteSw[BAND][4];
-
-        Serial.print(RemoteSwIP);
-        Serial.print(":");
-        Serial.println(RemoteSwPort);
-
-        // UDP send to Switch
-        TxUdpBuffer[0] = B01110011;         // s
-        TxUdpBuffer[1] = B00111010;         // :
-        TxUdpBuffer[2] = 0; //rxShiftInButton[0];  // set buffer
-        TxUdpBuffer[3] = 1;  //rxShiftInButton[1];
-        TxUdpBuffer[4] = 2;  //rxShiftInButton[2];
-        TxUdpBuffer[5] = B00111011;         // ;
-        UdpCommand.beginPacket(RemoteSwIP, RemoteSwPort);
-          UdpCommand.write(TxUdpBuffer, sizeof(TxUdpBuffer));   // send buffer
-          RemoteSwLatency[0] = millis(); // set START time mark UDP command latency
-        UdpCommand.endPacket();
-        RemoteSwLatencyAnsw = 0;   // send command, wait to answer
-
+      #if defined(LCD)
+        LcdNeedRefresh = true;
       #endif
-      LcdNeedRefresh = true;
-      previousBAND = BAND;
   }
+
+  #if defined(EthModule)
+    if(DetectedRemoteSw[BOARD_ID][4]==0 || RemoteSwLatencyAnsw==0){
+      //  && millis() < RemoteSwLatency[0]+RemoteSwLatency[1]*5) ){
+      digitalWrite(PttOffPin, HIGH);
+      TxBroadcastUdp("BandSet-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
+      PTT = true;
+      #if defined(LCD)
+      LcdNeedRefresh = true;
+      #endif
+    }
+  #endif
+  TxUDP();
+
+  previousBAND = BAND;
   #if defined(WATCHDOG)
     WatchdogTimeout[0] = millis();                   // set time mark
   #endif
