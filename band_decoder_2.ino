@@ -2,7 +2,7 @@
 
 /*
 
-  Band decoder MK2 with TRX control output for Arduino rev.0.4
+  Band decoder MK2 with TRX control output for Arduino
 -----------------------------------------------------------
   https://remoteqth.com/wiki/index.php?page=Band+decoder+MK2
   2018-05 by OK1HRA
@@ -122,7 +122,7 @@ Freq Hz from       to   Band number
 
 //=====[ Sets band -->  to output in MATRIX table ]===========================================================
 
-        const boolean matrix[17][16] = { /*
+        const boolean matrix[17][16] = { /* band out
 
         Band 0 --> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  1 }, /* first eight shift register board
 \       Band 1 --> */ { 1,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
@@ -169,6 +169,7 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  1,  0,    0,  0,  0,  0,  0,  0,
 //============================================================================================================
 
 // #define SERIAL_debug
+// #define UdpBroadcastDebug_debug
 
 #if defined(LCD)
   #include <Wire.h>
@@ -576,11 +577,21 @@ void TxUDP(){
         TxUdpBuffer[2] = BAND; //rxShiftInButton[0];  // set buffer
         TxUdpBuffer[3] = B00111011;         // ;
       #else
-        if(BAND>0 && BAND<9){
-          TxUdpBuffer[2] = TxUdpBuffer[2] | (1<<BAND-1); // set n-th bit
-        }else if(BAND>0){
-          TxUdpBuffer[3] = TxUdpBuffer[3] | (1<<(BAND-9)); // set n-th bit
+        for (int i = 0; i < 8; i++) {   // outputs 1-8
+          if(matrix[BAND][i]==1){
+            TxUdpBuffer[2] = TxUdpBuffer[2] | (1<<i); // set n-th bit
+          }
         }
+        for (int i = 8; i < 16; i++) {   // outputs 8-16
+          if(matrix[BAND][i]==1){
+            TxUdpBuffer[3] = TxUdpBuffer[3] | (1<<i-8); // set n-th bit
+          }
+        }
+        // if(BAND>0 && BAND<9){
+        //   TxUdpBuffer[2] = TxUdpBuffer[2] | (1<<BAND-1); // set n-th bit
+        // }else if(BAND>0){
+        //   TxUdpBuffer[3] = TxUdpBuffer[3] | (1<<(BAND-9)); // set n-th bit
+        // }
         TxUdpBuffer[4] = B00111011;         // ;
       #endif
       UdpCommand.beginPacket(RemoteSwIP, RemoteSwPort);
@@ -683,7 +694,9 @@ void PttOff(){
   #endif
 
     digitalWrite(PttOffPin, LOW);
-    TxBroadcastUdp("PttOff-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
+    #if defined(EthModule) && defined(UdpBroadcastDebug_debug)
+      TxBroadcastUdp("PttOff-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
+    #endif
     PTT = false;
     #if defined(LCD)
       LcdNeedRefresh = true;
@@ -1191,12 +1204,23 @@ void bandSET() {                                               // set outputs by
     ShiftByte[0] = B00000000;
     ShiftByte[1] = B00000000;
 
-    if(BAND > 0 && BAND < 9){
-      ShiftByte[0] = ShiftByte[0] | (1<<BAND-1);    // Set the n-th bit
+    for (int i = 0; i < 8; i++) {   // outputs 1-8
+      if(matrix[BAND][i]==1){
+        ShiftByte[0] = ShiftByte[0] | (1<<i);
+      }
     }
-    if(BAND > 7 && BAND < 17){
-      ShiftByte[1] = ShiftByte[1] | (1<<BAND-9);    // Set the n-th bit
+    for (int i = 8; i < 16; i++) {   // outputs 9-16
+      if(matrix[BAND][i]==1){
+        ShiftByte[1] = ShiftByte[1] | (1<<i-8);
+      }
     }
+
+    // if(BAND > 0 && BAND < 9){
+    //   ShiftByte[0] = ShiftByte[0] | (1<<BAND-1);    // Set the n-th bit
+    // }
+    // if(BAND > 7 && BAND < 17){
+    //   ShiftByte[1] = ShiftByte[1] | (1<<BAND-9);    // Set the n-th bit
+    // }
     digitalWrite(ShiftOutLatchPin, LOW);    // ready for receive data
     if(NumberOfBoards > 1){ shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[1]); }
                             shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[0]);
@@ -1214,7 +1238,9 @@ void bandSET() {                                               // set outputs by
     if(DetectedRemoteSw[BOARD_ID][4]==0 || RemoteSwLatencyAnsw==0){
       //  && millis() < RemoteSwLatency[0]+RemoteSwLatency[1]*5) ){
       digitalWrite(PttOffPin, HIGH);
-      TxBroadcastUdp("BandSet-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
+      #if defined(UdpBroadcastDebug_debug)
+        TxBroadcastUdp("BandSet-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
+      #endif
       PTT = true;
       #if defined(LCD)
       LcdNeedRefresh = true;
