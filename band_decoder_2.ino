@@ -67,18 +67,20 @@ Outputs
 // #define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL       // telnet ascii input - cvs format [band],[freq]\n
 #define ICOM_CIV           // read frequency from CIV
-
 // #define KENWOOD_PC         // RS232 CAT
 // #define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
 
 //=====[ Outputs ]============================================================================================
-
-// #define REMOTE_RELAY       // TCP/IP remote relay - need install and configure TCP232 module
-// #define SERIAL_echo        // Feedback on serial line in same baudrate, CVS format <[band],[freq]>\n
-// #define ICOM_CIV_OUT       // send frequency to CIV ** you must set TRX CIV_ADRESS, and disable ICOM_CIV **
-// #define KENWOOD_PC_OUT     // send frequency to RS232 CAT ** for operation must disable REQUEST **
+//   If enable:
+// - baudrate is same as selected Inputs
+// - Inputs work only in 'sniff mode'
+// - for operation must disable REQUEST
+//
+// #define ICOM_CIV_OUT       // send frequency to CIV ** you must set TRX CIV_ADRESS **
+// #define KENWOOD_PC_OUT     // send frequency to RS232 CAT
 // #define YAESU_CAT_OUT      // send frequency to RS232 CAT ** for operation must disable REQUEST **
+// #define SERIAL_echo        // Feedback on serial line in same baudrate, CVS format <[band],[freq]>\n
 
 //=====[ Hardware ]=============================================================================================
 
@@ -275,7 +277,14 @@ byte ShiftByte[5];
 
 // int SelectOut = 0;
 // int x;
-long RequestTimeout[2]={0, REQUEST};
+  long RequestTimeout[2]={0,
+    #if defined(REQUEST)
+      REQUEST
+    #else
+      0
+    #endif
+  };
+
 int watchdog2 = 500;     // REQUEST refresh time [ms]
 int previous2;
 int timeout2;
@@ -294,11 +303,6 @@ int timeout2;
 #endif
 #if defined(YAESU_BCD)
     long BcdInRefresh[2] = {0, 1000};   // refresh in ms
-#endif
-#if defined(REMOTE_RELAY)
-    int watchdog3 = 1000;     // send command to relay refresh time [ms]
-    int previous3;
-    int timeout3;
 #endif
 #if defined(KENWOOD_PC) || defined(YAESU_CAT)
     int lf = 59;  // 59 = ;
@@ -708,10 +712,10 @@ void PttOff(){
 
   }
 }
-
 //---------------------------------------------------------------------------------------------------------
 
 void FrequencyRequest(){
+  #if defined(REQUEST)
   if(REQUEST > 0 && (millis() - RequestTimeout[0] > RequestTimeout[1])){
 
     #if defined(ICOM_CIV)
@@ -724,6 +728,7 @@ void FrequencyRequest(){
     #endif
     RequestTimeout[0]=millis();
   }
+  #endif
 }
 //---------------------------------------------------------------------------------------------------------
 
@@ -1132,14 +1137,6 @@ void BandDecoderInput(){
 
 void BandDecoderOutput(){
 
-  //=====[ Output Remote relay ]=======================
-  #if defined(REMOTE_RELAY)
-      timeout3 = millis()-previous3;                  // check timeout
-      if (timeout3>(watchdog3)){
-          remoteRelay();
-          previous3 = millis();                       // set time mark
-      }
-  #endif
   //=====[ Output Icom CIV ]=======================
   #if defined(ICOM_CIV_OUT)
       if(freq!= freqPrev1){                    // if change
