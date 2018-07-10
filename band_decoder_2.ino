@@ -5,7 +5,7 @@
   Band decoder MK2 with TRX control output for Arduino
 -----------------------------------------------------------
   https://remoteqth.com/wiki/index.php?page=Band+decoder+MK2
-  2018-05 by OK1HRA
+  rev 0.3 | 2018-07 by OK1HRA
 
   ___               _        ___ _____ _  _
  | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
@@ -87,8 +87,8 @@ Outputs
 #define LCD                   // Uncoment to Enable I2C LCD
 #define LcdI2Caddress  0x3F   // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
 // #define EthModule             // enable Ethernet module if installed
-#define __USE_DHCP__          // enable DHCP
-byte BOARD_ID = 0x04;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace by P6 board encoder
+// #define __USE_DHCP__          // enable DHCP
+// byte BOARD_ID = 0x04;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace by P6 board encoder
 // #define BcdToIP               // control IP relay in BCD format
 
 //=====[ Settings ]===========================================================================================
@@ -97,7 +97,7 @@ byte BOARD_ID = 0x04;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace
 #define WATCHDOG       10     // [sec] determines the time, after which the all relay OFF, if missed next input data - uncomment for the enabled
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
 #define CIV_ADRESS   0x56     // CIV input HEX Icom adress (0x is prefix)
-#define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
+// #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
 // #define ENABLE_DIVIDER     // for highest voltage D-SUB pin 13 inputs up to 24V - need short JP9
 
 //=====[ FREQUEN RULES ]===========================================================================================
@@ -326,6 +326,7 @@ int timeout2;
     long freqPrev1;
     byte incomingByte = 0;
     int state = 1;  // state machine
+    bool StateMachineEnd = false;
 #endif
 #if defined(KENWOOD_PC_OUT) || defined(YAESU_CAT_OUT)
     long freqPrev2;
@@ -385,8 +386,13 @@ void setup() {
 
   #if defined(LCD)
     lcd.backlight();
+
+    //------------------------------------------------------
+    // Enable begin or init in dependence on the GUI version
     // lcd.begin();
     lcd.init();
+    //------------------------------------------------------
+
     lcd.createChar(0, LockChar);
     lcd.clear();
     lcd.setCursor(0,0);
@@ -649,18 +655,18 @@ void SendBroadcastUdp(){
 }
 //-------------------------------------------------------------------------------------------------------
 
-void TxBroadcastUdp(String MSG){
-  #if defined(EthModule)
-    InterruptON(0,0); // ptt, enc
-    BroadcastIP = ~Ethernet.subnetMask() | Ethernet.gatewayIP();
+#if defined(EthModule)
+  void TxBroadcastUdp(String MSG){
+      InterruptON(0,0); // ptt, enc
+      BroadcastIP = ~Ethernet.subnetMask() | Ethernet.gatewayIP();
 
-    UdpCommand.beginPacket(BroadcastIP, BroadcastPort);   // Send to IP and port from recived UDP command
-      UdpCommand.print(MSG);
-    UdpCommand.endPacket();
+      UdpCommand.beginPacket(BroadcastIP, BroadcastPort);   // Send to IP and port from recived UDP command
+        UdpCommand.print(MSG);
+      UdpCommand.endPacket();
 
-    InterruptON(1,1); // ptt, enc
-  #endif
-}
+      InterruptON(1,1); // ptt, enc
+  }
+#endif
 //-------------------------------------------------------------------------------------------------------
 
 unsigned char hexToDecBy4bit(unsigned char hex)
@@ -1054,7 +1060,9 @@ void BandDecoderInput(){
         incomingByte = Serial.read();
         icomSM(incomingByte);
         rdIS="";
-        if(rdI[10]==0xFD){                    // state machine end
+        // if(rdI[10]==0xFD){    // state machine end
+        if(StateMachineEnd == true){    // state machine end
+          StateMachineEnd = false;
           for (int i=9; i>=5; i-- ){
               if (rdI[i] < 10) {            // leading zero
                   rdIS = rdIS + 0;
@@ -1062,6 +1070,8 @@ void BandDecoderInput(){
               rdIS = rdIS + String(rdI[i], HEX);  // append BCD digit from HEX variable to string
           }
           freq = rdIS.toInt();
+          // Serial.println(freq);
+          // Serial.println("-------");
           FreqToBandRules();
           bandSET();
 
@@ -1297,25 +1307,55 @@ void watchDog() {
 
     int icomSM(byte b){      // state machine
         // This filter solves read from 0x00 0x05 0x03 commands and 00 E0 F1 address used by software
+        // Serial.print(b, HEX);
+        // Serial.print(" | ");
+        // Serial.println(state);
         switch (state) {
-            case 1: if( b == 0xFE ){ state = 2; rdI[0]=b; }; break;
+            case 1: if( b == 0xFE ){ state = 2; rdI[0]=b; rdI[10]=0x00; }; break;
             case 2: if( b == 0xFE ){ state = 3; rdI[1]=b; }else{ state = 1;}; break;
             // addresses that use different software 00-trx, e0-pc-ale, winlinkRMS, f1-winlink trimode
-            case 3: if( b == 0x00 || b == 0xE0 || b == 0xF1 ){ state = 4; rdI[2]=b;                             // choose command $03
-              }else if( b == CIV_ADRESS ){ state = 6; rdI[2]=b;}else{ state = 1;}; break;                       // or $05
+            case 3: if( b == 0x00 || b == 0xE0 || b == 0x0E || b == 0xF1 ){ state = 4; rdI[2]=b;                       // choose command $03
+            }else if( b == CIV_ADRESS ){ state = 6; rdI[2]=b;
+                    }else if( b == 0xFE ){ state = 3; rdI[1]=b;      // FE (3x reduce to 2x)
+                    }else{ state = 1;}; break;                       // or $05
 
             case 4: if( b == CIV_ADRESS ){ state = 5; rdI[3]=b; }else{ state = 1;}; break;                      // select command $03
-            case 5: if( b == 0x00 || b == 0x03 ){state = 8; rdI[4]=b; }else{ state = 1;}; break;
+            case 5: if( b == 0x00 || b == 0x03 ){state = 8; rdI[4]=b;  // freq
+                    }else if( b == 0x04 ){state = 14; rdI[4]=b;        // mode
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;        // FE
+                    }else{ state = 1;}; break;
 
             case 6: if( b == 0x00 || b == 0xE0 || b == 0xF1 ){ state = 7; rdI[3]=b; }else{ state = 1;}; break;  // select command $05
             case 7: if( b == 0x00 || b == 0x05 ){ state = 8; rdI[4]=b; }else{ state = 1;}; break;
 
-            case 8: if( b <= 0x99 ){state = 9; rdI[5]=b; }else{state = 1;}; break;
-            case 9: if( b <= 0x99 ){state = 10; rdI[6]=b; }else{state = 1;}; break;
-           case 10: if( b <= 0x99 ){state = 11; rdI[7]=b; }else{state = 1;}; break;
-           case 11: if( b <= 0x99 ){state = 12; rdI[8]=b; }else{state = 1;}; break;
-           case 12: if( b <= 0x99 ){state = 13; rdI[9]=b; }else{state = 1;}; break;
-           case 13: if( b == 0xFD ){state = 1; rdI[10]=b; }else{state = 1; rdI[10] = 0;}; break;
+            case 8: if( b <= 0x99 ){state = 9; rdI[5]=b;             // 10Hz 1Hz
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;
+            case 9: if( b <= 0x99 ){state = 10; rdI[6]=b;            // 1kHz 100Hz
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;
+           case 10: if( b <= 0x99 ){state = 11; rdI[7]=b;            // 100kHz 10kHz
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;
+           case 11: if( b <= 0x52 ){state = 12; rdI[8]=b;            // 10MHz 1Mhz
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;
+           case 12: if( b <= 0x01 || b == 0x04){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx MHz limit
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;
+           case 13: if( b == 0xFD ){state = 1; rdI[10]=b; StateMachineEnd = true;
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1; rdI[10] = 0x00;}; break;
+
+           case 14: if( b <= 0x12 ){state = 15; rdI[5]=b;
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;   // Mode
+           case 15: if( b <= 0x03 ){state = 16; rdI[6]=b;
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1;}; break;   // Filter
+           case 16: if( b == 0xFD ){state = 1; rdI[7]=b;
+                    }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
+                    }else{state = 1; rdI[7] = 0;}; break;
         }
     }
     //---------------------------------------------------------------------------------------------------------
