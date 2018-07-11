@@ -5,7 +5,7 @@
   Band decoder MK2 with TRX control output for Arduino
 -----------------------------------------------------------
   https://remoteqth.com/wiki/index.php?page=Band+decoder+MK2
-  rev 0.3 | 2018-07 by OK1HRA
+  rev 0.4 | 2018-07 by OK1HRA
 
   ___               _        ___ _____ _  _
  | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
@@ -64,9 +64,9 @@ Outputs
 //=====[ Inputs ]=============================================================================================
 
 // #define YAESU_BCD          // TTL BCD in A
-// #define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
+#define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL       // telnet ascii input - cvs format [band],[freq]\n
-#define ICOM_CIV           // read frequency from CIV
+// #define ICOM_CIV           // read frequency from CIV
 // #define KENWOOD_PC         // RS232 CAT
 // #define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
@@ -98,7 +98,7 @@ Outputs
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
 #define CIV_ADRESS   0x56     // CIV input HEX Icom adress (0x is prefix)
 // #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
-// #define ENABLE_DIVIDER     // for highest voltage D-SUB pin 13 inputs up to 24V - need short JP9
+// #define DISABLE_DIVIDER     // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
 
 //=====[ FREQUEN RULES ]===========================================================================================
 
@@ -267,7 +267,12 @@ long freq = 0;
 bool PTT = false;
 long PttTiming[2]={0, 10};            // debouncing time and also minimal PTT on time in ms
 float DCinVoltage;
-float ResistorCoeficient = 6.0;
+#if defined(DISABLE_DIVIDER)
+  float ResistorCoeficient = 1.0;
+#else
+  float ResistorCoeficient = 6.0;
+#endif
+
 long VoltageRefresh[2] = {0, 3000};   // refresh in ms
 float ArefVoltage = 4.303;            // Measure on Aref pin 20 for calibrate
 float Divider = 1;
@@ -295,9 +300,8 @@ int timeout2;
     long WatchdogTimeout[2] = {-WATCHDOG*1000, WATCHDOG*1000};
 #endif
 #if defined(ICOM_ACC)
-    int VALUE = 0;
-    int prevVALUE=0;
-    float VOLTAGE = 0;
+    float AccVoltage = 0;
+    float prevAccVoltage=0;
     int band = 0;
     int counter = 0;
 #endif
@@ -760,10 +764,13 @@ void LcdDisplay(){
         if((millis() - WatchdogTimeout[0]) > WatchdogTimeout[1]) {
           lcd.print("CAT timeout");
         }else{
+      #endif
           lcd.print(String(ANTname[BAND]).substring(0, 11));   // crop up to 7 char
           Space(11, String(ANTname[BAND]).length(), ' ');
+      #if defined(WATCHDOG)
         }
       #endif
+
 
       #if defined(EthModule)
         lcd.setCursor(0,0);
@@ -818,7 +825,7 @@ void LcdDisplay(){
         #endif
         #if defined(ICOM_ACC)
           lcd.setCursor(10,1);
-          lcd.print(VOLTAGE);
+          lcd.print(AccVoltage);
           lcd.print(" V");
         #endif
 
@@ -1010,43 +1017,40 @@ void BandDecoderInput(){
 
   //----------------------------------- Icom ACC
   #if defined(ICOM_ACC)
-    VALUE = analogRead(ADPin);
-    #if defined(ENABLE_DIVIDER)
-      Divider = 6;
-    #endif
+    AccVoltage = volt(analogRead(ADPin), ResistorCoeficient);
     if (counter == 5) {
-        VOLTAGE = float(VALUE) * ArefVoltage * Divider / 1023.0;
+        // AccVoltage = float(AccVoltage) * ArefVoltage * Divider / 1023.0;
 
         //=====[ Icom ACC voltage range ]===========================================================
 
-        if (VOLTAGE > 0.73 && VOLTAGE < 1.00 ) {BAND=10;}  //   6m   * * * * * * * * * * * * * * * *
-        if (VOLTAGE > 1.00 && VOLTAGE < 1.09 ) {BAND=9;}   //  10m   *           Need              *
-        if (VOLTAGE > 1.09 && VOLTAGE < 1.32 ) {BAND=8;}   //  12m   *    calibrated to your       *
-        if (VOLTAGE > 1.32 && VOLTAGE < 1.55 ) {BAND=7;}   //  15m   *         own ICOM            *
-        if (VOLTAGE > 1.55 && VOLTAGE < 1.77 ) {BAND=6;}   //  17m   *     ----------------        *
-        if (VOLTAGE > 1.77 && VOLTAGE < 2.24 ) {BAND=5;}   //  20m   *    (These values have       *
-        if (VOLTAGE > 0.10 && VOLTAGE < 0.50 ) {BAND=4;}   //  30m   *   been measured by any)     *
-        if (VOLTAGE > 2.24 && VOLTAGE < 2.73 ) {BAND=3;}   //  40m   *          ic-746             *
-        if (VOLTAGE > 2.73 && VOLTAGE < 2.99 ) {BAND=2;}   //  80m   *                             *
-        if (VOLTAGE > 2.99 && VOLTAGE < 4.00 ) {BAND=1;}   // 160m   * * * * * * * * * * * * * * * *
-        if (VOLTAGE > 0.00 && VOLTAGE < 0.10 ) {BAND=0;}   // parking
+        if (AccVoltage > 0.73 && AccVoltage < 1.00 ) {BAND=10;}  //   6m   * * * * * * * * * * * * * * * *
+        if (AccVoltage > 1.00 && AccVoltage < 1.09 ) {BAND=9;}   //  10m   *           Need              *
+        if (AccVoltage > 1.09 && AccVoltage < 1.32 ) {BAND=8;}   //  12m   *    calibrated to your       *
+        if (AccVoltage > 1.32 && AccVoltage < 1.55 ) {BAND=7;}   //  15m   *         own ICOM            *
+        if (AccVoltage > 1.55 && AccVoltage < 1.77 ) {BAND=6;}   //  17m   *     ----------------        *
+        if (AccVoltage > 1.77 && AccVoltage < 2.24 ) {BAND=5;}   //  20m   *    (These values have       *
+        if (AccVoltage > 0.10 && AccVoltage < 0.50 ) {BAND=4;}   //  30m   *   been measured by any)     *
+        if (AccVoltage > 2.24 && AccVoltage < 2.73 ) {BAND=3;}   //  40m   *          ic-746             *
+        if (AccVoltage > 2.73 && AccVoltage < 2.99 ) {BAND=2;}   //  80m   *                             *
+        if (AccVoltage > 2.99 && AccVoltage < 4.00 ) {BAND=1;}   // 160m   * * * * * * * * * * * * * * * *
+        if (AccVoltage > 0.00 && AccVoltage < 0.10 ) {BAND=0;}   // parking
 
         //==========================================================================================
 
         bandSET();                                // set outputs
         delay (20);
     }else{
-        if (abs(prevVALUE-VALUE)>10) {            // average
+        if (abs(prevAccVoltage-AccVoltage)>10) {            // average
             //means change or spurious number
-            prevVALUE=VALUE;
+            prevAccVoltage=AccVoltage;
         }else {
             counter++;
-            prevVALUE=VALUE;
+            prevAccVoltage=AccVoltage;
         }
     }
     #if defined(SERIAL_echo)
         serialEcho();
-        Serial.print(VOLTAGE);
+        Serial.print(AccVoltage);
         Serial.println(" V");
         Serial.flush();
     #endif
