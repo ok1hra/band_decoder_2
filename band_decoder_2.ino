@@ -5,7 +5,7 @@
   Band decoder MK2 with TRX control output for Arduino
 -----------------------------------------------------------
   https://remoteqth.com/wiki/index.php?page=Band+decoder+MK2
-  rev 0.4 | 2018-07 by OK1HRA
+  rev 0.5 | 2018-07 by OK1HRA
 
   ___               _        ___ _____ _  _
  | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
@@ -64,9 +64,9 @@ Outputs
 //=====[ Inputs ]=============================================================================================
 
 // #define YAESU_BCD          // TTL BCD in A
-#define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
+// #define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL       // telnet ascii input - cvs format [band],[freq]\n
-// #define ICOM_CIV           // read frequency from CIV
+#define ICOM_CIV           // read frequency from CIV
 // #define KENWOOD_PC         // RS232 CAT
 // #define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
@@ -99,7 +99,7 @@ Outputs
 #define CIV_ADRESS   0x56     // CIV input HEX Icom adress (0x is prefix)
 // #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
 // #define DISABLE_DIVIDER     // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
-
+// #define DEBUG                  // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
 
 const long Freq2Band[16][2] = {/*
@@ -1062,6 +1062,9 @@ void BandDecoderInput(){
   #if defined(ICOM_CIV)
     if (Serial.available() > 0) {
         incomingByte = Serial.read();
+        #if defined(DEBUG)
+          Serial.print(incomingByte);
+        #endif
         icomSM(incomingByte);
         rdIS="";
         // if(rdI[10]==0xFD){    // state machine end
@@ -1118,7 +1121,11 @@ void BandDecoderInput(){
     // IF00007032327      000000000030000080;
     while (Serial.available()) {
         rdKS="";
-        Serial.readBytesUntil(lf, rdK, 38);       // fill array from serial
+        #if defined(DEBUG)
+          byte incomingByte = Serial.read();
+          Serial.write(incomingByte);
+        #else
+          Serial.readBytesUntil(lf, rdK, 38);       // fill array from serial
             if (rdK[0] == 73 && rdK[1] == 70){     // filter
                 for (int i=2; i<=12; i++){          // 3-13 position to freq
                     rdKS = rdKS + String(rdK[i]);   // append variable to string
@@ -1132,6 +1139,7 @@ void BandDecoderInput(){
                 #endif
             }
             memset(rdK, 0, sizeof(rdK));   // Clear contents of Buffer
+          #endif
     }
   #endif
 
