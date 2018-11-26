@@ -30,6 +30,7 @@ Support inputs
   * SERIAL terminal (ASCII)
   * ICOM CI-V
   * KENWOOD - CAT
+  * FLEX 6000 CAT series
   * YAESU BCD
   * ICOM ACC voltage
   * YAESU CAT - TRX since 2008 ascii format
@@ -57,6 +58,7 @@ Outputs
 
   Changelog
   ---------
+  2018-11 support FLEX 6000 CAT series
   2018-06 support IP relay
   2018-05 mk2 initial release
 
@@ -66,8 +68,9 @@ Outputs
 // #define YAESU_BCD          // TTL BCD in A
 // #define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL       // telnet ascii input - cvs format [band],[freq]\n
-#define ICOM_CIV           // read frequency from CIV
+// #define ICOM_CIV           // read frequency from CIV
 // #define KENWOOD_PC         // RS232 CAT
+#define FLEX_6000         // RS232 CAT
 // #define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
 
@@ -308,10 +311,10 @@ int timeout2;
 #if defined(YAESU_BCD)
     long BcdInRefresh[2] = {0, 1000};   // refresh in ms
 #endif
-#if defined(KENWOOD_PC) || defined(YAESU_CAT)
+#if defined(KENWOOD_PC) || defined(YAESU_CAT) || defined(FLEX_6000)
     int lf = 59;  // 59 = ;
 #endif
-#if defined(KENWOOD_PC)
+#if defined(KENWOOD_PC) || defined(FLEX_6000)
     char rdK[37];   //read data kenwood
     String rdKS;    //read data kenwood string
 #endif
@@ -413,6 +416,9 @@ void setup() {
       #endif
       #if defined(KENWOOD_PC)
         lcd.print("KENWOOD      ");
+      #endif
+      #if defined(FLEX_6000)
+        lcd.print("FLEX-6000    ");
       #endif
       #if defined(YAESU_CAT) || defined(YAESU_CAT_OLD)
         lcd.print("YAESU       ");
@@ -736,6 +742,11 @@ void FrequencyRequest(){
           Serial.print("IF;");
           Serial.flush();       // Waits for the transmission of outgoing serial data to complete
     #endif
+
+    #if defined(FLEX_6000)
+          Serial.print("FA;");
+          Serial.flush();       // Waits for the transmission of outgoing serial data to complete
+    #endif
     RequestTimeout[0]=millis();
   }
   #endif
@@ -899,6 +910,9 @@ void WebServer(){
             #endif
             #if defined(KENWOOD_PC)
               client.print(F("KENWOOD"));
+            #endif
+            #if defined(FLEX_6000)
+              client.print(F("FLEX-6000"));
             #endif
             #if defined(YAESU_CAT)
               client.print(F("YAESU"));
@@ -1127,6 +1141,39 @@ void BandDecoderInput(){
         #else
           Serial.readBytesUntil(lf, rdK, 38);       // fill array from serial
             if (rdK[0] == 73 && rdK[1] == 70){     // filter
+                for (int i=2; i<=12; i++){          // 3-13 position to freq
+                    rdKS = rdKS + String(rdK[i]);   // append variable to string
+                }
+                freq = rdKS.toInt();
+                FreqToBandRules();
+                bandSET();                                              // set outputs relay
+
+                #if defined(SERIAL_echo)
+                    serialEcho();
+                #endif
+            }
+            memset(rdK, 0, sizeof(rdK));   // Clear contents of Buffer
+          #endif
+    }
+  #endif
+
+  //----------------------------------- FLEX-6700
+  #if defined(FLEX_6000)
+    // http://www.flexradio.com/downloads/smartsdr-cat-user-guide-pdf/#
+    // Data exapmple FA
+    // FA00007167500;
+    // FA00014150000;
+    // Data exapmple IF
+    // IF00007151074      000000000030000080;
+    // IF000035730000100+0000000000090000000;   when 3.573 MHz
+    while (Serial.available()) {
+        rdKS="";
+        #if defined(DEBUG)
+          byte incomingByte = Serial.read();
+          Serial.write(incomingByte);
+        #else
+          Serial.readBytesUntil(lf, rdK, 14);       // fill array from serial
+            if (rdK[0] == 70 && rdK[1] == 65){     // filter
                 for (int i=2; i<=12; i++){          // 3-13 position to freq
                     rdKS = rdKS + String(rdK[i]);   // append variable to string
                 }
