@@ -58,6 +58,7 @@ Outputs
 
   Changelog
   ---------
+  2018-12 PTT bug fix
   2018-11 support FLEX 6000 CAT series
   2018-06 support IP relay
   2018-05 mk2 initial release
@@ -68,9 +69,9 @@ Outputs
 // #define YAESU_BCD          // TTL BCD in A
 // #define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL       // telnet ascii input - cvs format [band],[freq]\n
-// #define ICOM_CIV           // read frequency from CIV
+#define ICOM_CIV           // read frequency from CIV
 // #define KENWOOD_PC         // RS232 CAT
-#define FLEX_6000         // RS232 CAT
+// #define FLEX_6000         // RS232 CAT
 // #define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
 
@@ -97,9 +98,9 @@ Outputs
 //=====[ Settings ]===========================================================================================
 
 #define SERBAUD        9600   // [baud] Serial port in/out baudrate
-#define WATCHDOG       10     // [sec] determines the time, after which the all relay OFF, if missed next input data - uncomment for the enabled
+#define WATCHDOG       20     // [sec] determines the time, after which the all relay OFF, if missed next input data - uncomment for the enabled
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
-#define CIV_ADRESS   0x56     // CIV input HEX Icom adress (0x is prefix)
+#define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
 // #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
 // #define DISABLE_DIVIDER     // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
 // #define DEBUG                  // enable some debugging
@@ -207,8 +208,8 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  1,  0,    0,  0,  0,  0,  0,  0,
 
 #if defined(EthModule)
   //  #include <util.h>
-  #include <Ethernet2.h>
-  #include <EthernetUdp2.h>
+  #include <Ethernet.h>
+  #include <EthernetUdp.h>
   // #include <Dhcp.h>
   // #include <EthernetServer.h>
   #include <SPI.h>
@@ -697,7 +698,7 @@ void InterruptON(int ptt, int enc){
 //---------------------------------------------------------------------------------------------------------
 
 void PttDetector(){   // call from interupt
-  digitalWrite(PttOffPin, HIGH);
+  // digitalWrite(PttOffPin, HIGH);
   PTT = true;
   #if defined(LCD)
     LcdNeedRefresh = true;
@@ -713,7 +714,7 @@ void PttOff(){
     if(DetectedRemoteSw[BOARD_ID][4]!=0 && RemoteSwLatencyAnsw==1){
   #endif
 
-    digitalWrite(PttOffPin, LOW);
+    // digitalWrite(PttOffPin, LOW);
     #if defined(EthModule) && defined(UdpBroadcastDebug_debug)
       TxBroadcastUdp("PttOff-" + String(DetectedRemoteSw[BOARD_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
     #endif
@@ -1263,8 +1264,9 @@ void bandSET() {                                               // set outputs by
     #if defined(LCD)
       LcdNeedRefresh = true;
     #endif
+  }else if(BAND!=0 && previousBAND == 0){    // deactivate PTT
+    digitalWrite(PttOffPin, LOW);
   }
-
 
   if((PTT==false && previousBAND != 0 ) || (PTT==true && previousBAND == 0)){
     ShiftByte[0] = B00000000;
