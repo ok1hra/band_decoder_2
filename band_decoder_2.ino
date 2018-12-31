@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20181214";
+const char* REV = "20181231";
 
 /*
 
@@ -60,6 +60,7 @@ Outputs
   ---------
   2018-12 PTT bug fix
           LCD PCF8574 support
+          copy YAESU CAT from old code
   2018-11 support FLEX 6000 CAT series
   2018-06 support IP relay
   2018-05 mk2 initial release
@@ -70,10 +71,10 @@ Outputs
 // #define YAESU_BCD          // TTL BCD in A
 // #define ICOM_ACC           // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL       // telnet ascii input - cvs format [band],[freq]\n
-#define ICOM_CIV           // read frequency from CIV
+// #define ICOM_CIV           // read frequency from CIV
 // #define KENWOOD_PC         // RS232 CAT
 // #define FLEX_6000         // RS232 CAT
-// #define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
+#define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
 
 //=====[ Outputs ]============================================================================================
@@ -94,12 +95,12 @@ const byte LcdI2Caddress = 0x27; // 0x27 0x3F - may be find with I2C scanner htt
 #define LCD_PCF8574T             // If LCD use T version (not AT) chip
 // #define EthModule             // enable Ethernet module if installed
 // #define __USE_DHCP__          // enable DHCP
-// byte BOARD_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace by P6 board encoder
+byte BOARD_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace by P6 board encoder
 // #define BcdToIP               // control IP relay in BCD format
 
 //=====[ Settings ]===========================================================================================
 
-#define SERBAUD        9600   // [baud] Serial port in/out baudrate
+#define SERBAUD        115200   // [baud] Serial port in/out baudrate
 #define WATCHDOG       20     // [sec] determines the time, after which the all relay OFF, if missed next input data - uncomment for the enabled
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
 #define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
@@ -845,7 +846,7 @@ void FrequencyRequest(){
       txCIV(3, 0, CIV_ADRESS);  // ([command], [freq]) 3=read
     #endif
 
-    #if defined(KENWOOD_PC)
+    #if defined(KENWOOD_PC) || defined(YAESU_CAT)
           Serial.print("IF;");
           Serial.flush();       // Waits for the transmission of outgoing serial data to complete
     #endif
@@ -853,6 +854,15 @@ void FrequencyRequest(){
     #if defined(FLEX_6000)
           Serial.print("FA;");
           Serial.flush();       // Waits for the transmission of outgoing serial data to complete
+    #endif
+
+    #if defined(YAESU_CAT_OLD)
+        Serial.write(0);                                    // byte 1
+        Serial.write(0);                                    // byte 2
+        Serial.write(0);                                    // byte 3
+        Serial.write(0);                                    // byte 4
+        Serial.write(3);                                    // read freq
+        Serial.flush();
     #endif
     RequestTimeout[0]=millis();
   }
@@ -1299,10 +1309,47 @@ void BandDecoderInput(){
 
   //----------------------------------- Yaesu CAT
   #if defined(YAESU_CAT)
-      #include "yaesu_cat.h"
+  while (Serial.available()) {
+      rdYS="";
+      Serial.readBytesUntil(lf, rdY, 38);         // fill array from serial
+          if (rdY[0] == 73 && rdY[1] == 70){      // filter
+              for (int i=5; i<=12; i++){          // 6-13 position to freq
+                  rdYS = rdYS + String(rdY[i]);   // append variable to string
+              }
+              freq = rdYS.toInt();
+              FreqToBandRules();
+              bandSET();                                              // set outputs relay
+
+              #if defined(SERIAL_echo)
+                  serialEcho();
+              #endif
+          }
+          memset(rdY, 0, sizeof(rdY));   // Clear contents of Buffer
+  }
   #endif
+
   #if defined(YAESU_CAT_OLD)
-      #include "yaesu_cat_old.h"
+  while (Serial.available()) {
+      rdYOS="";
+      Serial.readBytesUntil('240', rdYO, 5);                   // fill array from serial (240 = 0xF0)
+      if (rdYO[0] != 0xF0 && rdYO[1] != 0xF0 && rdYO[2] != 0xF0 && rdYO[3] != 0xF0 && rdYO[4] != 0xF0 && rdYO[5] != 0xF0){     // filter
+          for (int i=0; i<4; i++ ){
+              if (rdYO[i] < 10) {                              // leading zero
+                  rdYOS = rdYOS + 0;
+              }
+              rdYOS = rdYOS + String(rdYO[i], HEX);            // append BCD digit from HEX variable to string
+          }
+          rdYOS = rdYOS + 0;                                   // append Hz
+          freq = rdYOS.toInt();
+          FreqToBandRules();
+          bandSET();                                                                // set outputs relay
+
+          #if defined(SERIAL_echo)
+              serialEcho();
+          #endif
+      }
+      memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
+    }
   #endif
 
   #if !defined(YAESU_BCD)
