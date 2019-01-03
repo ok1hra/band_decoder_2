@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20181231";
+const char* REV = "20190103";
 
 /*
 
@@ -61,6 +61,7 @@ Outputs
   2018-12 PTT bug fix
           LCD PCF8574 support
           copy YAESU CAT from old code
+          added YAESU FT-100 support
   2018-11 support FLEX 6000 CAT series
   2018-06 support IP relay
   2018-05 mk2 initial release
@@ -74,8 +75,9 @@ Outputs
 // #define ICOM_CIV           // read frequency from CIV
 // #define KENWOOD_PC         // RS232 CAT
 // #define FLEX_6000         // RS232 CAT
-#define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
+//#define YAESU_CAT          // RS232 CAT YAESU CAT since 2015 ascii format
 // #define YAESU_CAT_OLD      // Old binary format RS232 CAT ** tested on FT-817 **
+#define YAESU_CAT_FT100       // RS232 CAT YAESU for FT100(D)
 
 //=====[ Outputs ]============================================================================================
 //   If enable:
@@ -92,7 +94,10 @@ Outputs
 
 #define LCD                      // Uncoment to Enable I2C LCD
 const byte LcdI2Caddress = 0x27; // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
-#define LCD_PCF8574T             // If LCD use T version (not AT) chip
+#define LCD_PCF8574             // If LCD uses PCF8574 chip
+//#define LCD_PCF8574T             // If LCD uses PCF8574T chip
+//#define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
+
 // #define EthModule             // enable Ethernet module if installed
 // #define __USE_DHCP__          // enable DHCP
 byte BOARD_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace by P6 board encoder
@@ -100,7 +105,7 @@ byte BOARD_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace
 
 //=====[ Settings ]===========================================================================================
 
-#define SERBAUD        115200   // [baud] Serial port in/out baudrate
+#define SERBAUD        4800   // [baud] Serial port in/out baudrate
 #define WATCHDOG       20     // [sec] determines the time, after which the all relay OFF, if missed next input data - uncomment for the enabled
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
 #define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
@@ -183,10 +188,11 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  1,  0,    0,  0,  0,  0,  0,  0,
 #if defined(LCD)
   #include <Wire.h>
 
-  #if defined(LCD_PCF8574T)
+  #if defined(LCD_PCF8574T) || defined(LCD_PCF8574)
     #include <LiquidCrystal_PCF8574.h>
     LiquidCrystal_PCF8574 lcd(LcdI2Caddress);
-  #else
+  #endif
+  #if defined(LCD_PCF8574AT)
     #include <LiquidCrystal_I2C.h>
     LiquidCrystal_I2C lcd(LcdI2Caddress,16,2);
   #endif
@@ -339,7 +345,7 @@ int timeout2;
     char rdY[37];   //read data yaesu
     String rdYS;    //read data yaesu string
 #endif
-#if defined(YAESU_CAT_OLD)
+#if defined(YAESU_CAT_OLD) || defined(YAESU_CAT_FT100)
     byte rdYO[37];   //read data yaesu
     String rdYOS;    //read data yaesu string
 #endif
@@ -362,7 +368,7 @@ int timeout2;
 //---------------------------------------------------------------------------------------------------------
 
 void setup() {
-  #if defined(YAESU_CAT_OLD)
+  #if defined(YAESU_CAT_OLD) || defined(YAESU_CAT_FT100)
     Serial.begin(SERBAUD, SERIAL_8N2);
     Serial.setTimeout(10);
   #else
@@ -410,7 +416,7 @@ void setup() {
 
   #if defined(LCD)
 
-    #if defined(LCD_PCF8574T)
+    #if defined(LCD_PCF8574T) || defined(LCD_PCF8574)
       lcd.begin(16, 2); // initialize the lcd PFC8574
       lcd.setBacklight(1);
     #else
@@ -448,7 +454,7 @@ void setup() {
       #if defined(FLEX_6000)
         lcd.print("FLEX-6000    ");
       #endif
-      #if defined(YAESU_CAT) || defined(YAESU_CAT_OLD)
+      #if defined(YAESU_CAT) || defined(YAESU_CAT_OLD) || defined(YAESU_CAT_FT100)
         lcd.print("YAESU       ");
       #endif
       #if defined(YAESU_BCD)
@@ -864,6 +870,13 @@ void FrequencyRequest(){
         Serial.write(3);                                    // read freq
         Serial.flush();
     #endif
+
+    #if defined(YAESU_CAT_FT100)
+        byte readStatusCMD[] = {0x00,0x00,0x00,0x00,0x10};
+        Serial.write(readStatusCMD,5);
+        Serial.flush(); 
+    #endif
+    
     RequestTimeout[0]=millis();
   }
   #endif
@@ -1036,6 +1049,9 @@ void WebServer(){
             #endif
             #if defined(YAESU_CAT_OLD)
               client.print(F("YAESU [Old]"));
+            #endif
+            #if defined(YAESU_CAT_FT100)
+              client.print(F("YAESU [FT100]"));
             #endif
             #if defined(YAESU_BCD)
               client.print(F("BCD"));
@@ -1327,7 +1343,7 @@ void BandDecoderInput(){
           memset(rdY, 0, sizeof(rdY));   // Clear contents of Buffer
   }
   #endif
-
+  //----------------------------------- Yaesu CAT OLD
   #if defined(YAESU_CAT_OLD)
   while (Serial.available()) {
       rdYOS="";
@@ -1351,7 +1367,32 @@ void BandDecoderInput(){
       memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
     }
   #endif
-
+  
+  //----------------------------------- Yaesu CAT FT100
+  #if defined(YAESU_CAT_FT100)
+  union ArrayToInteger {
+    byte array[5];
+    uint32_t integer;
+  };
+  ArrayToInteger convert;
+  while (Serial.available()) {
+      int numberOfBytes = Serial.readBytes(rdYO, 32);        
+      if(numberOfBytes == 32){                                
+          convert.array[4] = 0;
+          convert.array[3] = rdYO[1];
+          convert.array[2] = rdYO[2];
+          convert.array[1] = rdYO[3];
+          convert.array[0] = rdYO[4];
+          freq = convert.integer * 1.25;                    //fq data read back from FT-100 is the number of steps in 1.25Hz
+  
+          FreqToBandRules();                                // map fq to band
+          bandSET();                                        // set outputs relay
+      }
+      
+    memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
+  }
+  #endif
+  
   #if !defined(YAESU_BCD)
     InterruptON(1,1); // ptt, enc
   #endif
@@ -1627,6 +1668,7 @@ void FreqToBandRules(){
     else if (freq >=Freq2Band[7][0] && freq <=Freq2Band[7][1] )  {BAND=8;}  //  12m
     else if (freq >=Freq2Band[8][0] && freq <=Freq2Band[8][1] )  {BAND=9;}  //  10m
     else if (freq >=Freq2Band[9][0] && freq <=Freq2Band[9][1] ) {BAND=10;}  //   6m
-    else if (freq >=Freq2Band[10][0] && freq <=Freq2Band[10][1] ) {BAND=11;}  //   2m
+    else if (freq >=Freq2Band[10][0] && freq <=Freq2Band[10][1] ) {BAND=11;}  // 2m
+    else if (freq >=Freq2Band[11][0] && freq <=Freq2Band[11][1] ) {BAND=12;}  // 70cm
     else {BAND=0;}                                                // out of range
 }
