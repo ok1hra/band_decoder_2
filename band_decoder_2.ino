@@ -1,6 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20190311";
-
+const char* REV = "20190312";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -82,7 +81,7 @@ Outputs
 // #define MULTI_OUTPUT_BY_BCD  // manual switch between four output on same band by BCD input
                                 // - YAESU_BCD input must be disable
                                 // - BCD output will be disble
-
+                                // - it must always be select (grounded) one of BCD input
 //=====[ Outputs ]============================================================================================
 //   If enable:
 // - baudrate is same as selected Inputs
@@ -114,8 +113,8 @@ byte NET_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace b
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
 #define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
 #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
-// #define DISABLE_DIVIDER     // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
-// #define DEBUG                  // enable some debugging
+// #define DISABLE_DIVIDER    // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
+// #define DEBUG              // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
 
 const long Freq2Band[16][2] = {/*
@@ -218,24 +217,31 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
 
 
   long LcdRefresh[2]{0,500};
-  const char* ANTname[17] = {
-      "Out of band",  // Band 0 (no data)
-      "Dipole",       // Band 1
-      "Vertical",     // Band 2
-      "3el Yagi",     // Band 3
-      "Windom",       // Band 4
-      "DeltaLoop",    // Band 5
-      "20m Stack",    // Band 6
-      "DeltaLoop",    // Band 7
-      "HB9",          // Band 8
-      "Dipole",       // Band 9
-      "5el Yagi",     // Band 10
-      "7el Yagi",     // Band 11
-      "24el",         // Band 12
-      "20el quad",    // Band 13
-      "Dish 1.2m",    // Band 14
-      "Dish 1.2m",    // Band 15
-      "Dish 1m",      // Band 16
+  const char* ANTname[17][4] = {
+
+/*    If enable #define MULTI_OUTPUT_BY_BCD
+      you can fill name for another antennas on the same band
+      dependency to select BCD input
+
+Default or BCD-1   BCD-2   BCD-3    BCD-4
+             |       |       |        |
+*/    {"Out of band", "Out of band", "Out of band", "Out of band"},  // Band 0 (no data)
+      {"Dipole", "BCD-2", "BCD-3", "BCD-4"},       // Band 1
+      {"Vertical", "BCD-2", "BCD-3", "BCD-4"},     // Band 2
+      {"3el Yagi", "BCD-2", "BCD-3", "BCD-4"},     // Band 3
+      {"Windom", "BCD-2", "BCD-3", "BCD-4"},       // Band 4
+      {"DeltaLoop", "BCD-2", "BCD-3", "BCD-4"},    // Band 5
+      {"20m Stack", "BCD-2", "BCD-3", "BCD-4"},    // Band 6
+      {"DeltaLoop", "BCD-2", "BCD-3", "BCD-4"},    // Band 7
+      {"HB9", "BCD-2", "BCD-3", "BCD-4"},          // Band 8
+      {"Dipole", "BCD-2", "BCD-3", "BCD-4"},       // Band 9
+      {"5el Yagi", "BCD-2", "BCD-3", "BCD-4"},     // Band 10
+      {"7el Yagi", "BCD-2", "BCD-3", "BCD-4"},     // Band 11
+      {"24el", "BCD-2", "BCD-3", "BCD-4"},         // Band 12
+      {"20el quad", "BCD-2", "BCD-3", "BCD-4"},    // Band 13
+      {"Dish 1.2m", "BCD-2", "BCD-3", "BCD-4"},    // Band 14
+      {"Dish 1.2m", "BCD-2", "BCD-3", "BCD-4"},    // Band 15
+      {"Dish 1m", "BCD-2", "BCD-3", "BCD-4"},      // Band 16
   };
   // byte LockChar[8] = {0b00100, 0b01010, 0b01010, 0b11111, 0b11011, 0b11011, 0b11111, 0b00000};
   uint8_t LockChar[8] = {0x4,0xa,0xa,0x1f,0x1b,0x1b,0x1f,0x0};
@@ -510,7 +516,6 @@ void setup() {
     mac[5] = LastMac;
     EthernetCheck();
   #endif
-  // ANTname[0] = " [timeout]  ";
   InterruptON(1,1); // ptt, enc
 }
 //---------------------------------------------------------------------------------------------------------
@@ -982,25 +987,33 @@ void LcdDisplay(){
       #endif
 
       lcd.setCursor(0,0);
-      // lcd.print("ANT ");
+      int NameByBcd=0;
+      #if defined(MULTI_OUTPUT_BY_BCD)
+        if(SelectBank==2){
+          NameByBcd=1;
+        }else if(SelectBank==4){
+          NameByBcd=2;
+        }else if(SelectBank==8){
+          NameByBcd=3;
+        }
+      #endif
       #if defined(WATCHDOG)
         if((millis() - WatchdogTimeout[0]) > WatchdogTimeout[1]) {
           lcd.print("CAT timeout");
         }else{
       #endif
-          lcd.print(String(ANTname[BAND]).substring(0, 11));   // crop up to 7 char
-          Space(11, String(ANTname[BAND]).length(), ' ');
+          lcd.print(String(ANTname[BAND][NameByBcd]).substring(0, 11));   // crop up to 7 char
+          Space(11, String(ANTname[BAND][NameByBcd]).length(), ' ');
       #if defined(WATCHDOG)
         }
       #endif
-
 
       #if defined(EthModule)
         lcd.setCursor(0,0);
         // if(RemoteSwLatencyAnsw==1 || (RemoteSwLatencyAnsw==0 && millis() < RemoteSwLatency[0]+RemoteSwLatency[1]*5)){ // if answer ok, or latency measure nod end
         if(RemoteSwLatencyAnsw==1 || (RemoteSwLatencyAnsw==0 && millis() < RemoteSwLatency[0]+500) ){ // if answer ok, or latency measure nod end
-          lcd.print(String(ANTname[BAND]).substring(0, 11));   // crop up to 7 char
-          Space(11, String(ANTname[BAND]).length(), ' ');
+          lcd.print(String(ANTname[BAND][NameByBcd]).substring(0, 11));   // crop up to 7 char
+          Space(11, String(ANTname[BAND][NameByBcd]).length(), ' ');
         }else{
           lcd.print("NetID-");
           lcd.print(NET_ID, HEX);
