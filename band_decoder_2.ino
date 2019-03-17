@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20190312";
+const char* REV = "20190317";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -114,7 +114,7 @@ byte NET_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace b
 #define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
 #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
 // #define DISABLE_DIVIDER    // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
-// #define DEBUG              // enable some debugging
+#define DEBUG              // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
 
 const long Freq2Band[16][2] = {/*
@@ -200,7 +200,7 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
 
 //============================================================================================================
 
-// #define SERIAL_debug
+#define SERIAL_debug
 // #define UdpBroadcastDebug_debug
 
 #if defined(LCD)
@@ -271,8 +271,9 @@ Default or BCD-1   BCD-2   BCD-3    BCD-4
   String HTTP_req;
 
   unsigned int UdpCommandPort = 88;       // local UDP port listen to command
-  #define UDP_TX_PACKET_MAX_SIZE 40       // MIN 30
-  unsigned char packetBuffer[UDP_TX_PACKET_MAX_SIZE]; //buffer to hold incoming packet,
+  // #define UDP_TX_PACKET_MAX_SIZE 30       // MIN 30
+  // unsigned char packetBuffer[UDP_TX_PACKET_MAX_SIZE]; //buffer to hold incoming packet,
+  unsigned char packetBuffer[30]; //buffer to hold incoming packet,
   int UDPpacketSize;
   EthernetUDP UdpCommand; // An EthernetUDP instance to let us send and receive packets over UDP
   IPAddress BroadcastIP(0, 0, 0, 0);        // Broadcast IP address
@@ -572,21 +573,19 @@ void TxUDP(byte FROM, byte TO, byte A, byte B, byte C){
           // RemoteSwLatency[0] = millis(); // set START time mark UDP command latency
 
           #if defined(SERIAL_debug)
-            if(DEBUG==1){
-              Serial.print(F("TX direct ID-"));
-              Serial.print(i);
-              Serial.print(F(" "));
-              Serial.print(RemoteSwIP);
-              Serial.print(F(":"));
-              Serial.print(RemoteSwPort);
-              Serial.print(F(" ["));
-              Serial.print(TxUdpBuffer[0], HEX);
-              for (int i=1; i<8; i++){
-                Serial.print(char(TxUdpBuffer[i]));
-                // Serial.print(F(" "));
-              }
-              Serial.println("]");
+            Serial.print(F("TX direct ID-"));
+            Serial.print(i);
+            Serial.print(F(" "));
+            Serial.print(RemoteSwIP);
+            Serial.print(F(":"));
+            Serial.print(RemoteSwPort);
+            Serial.print(F(" ["));
+            Serial.print(TxUdpBuffer[0], HEX);
+            for (int i=1; i<8; i++){
+              Serial.print(char(TxUdpBuffer[i]));
+              // Serial.print(F(" "));
             }
+            Serial.println(F("]"));
           #endif
         }
       }
@@ -599,19 +598,17 @@ void TxUDP(byte FROM, byte TO, byte A, byte B, byte C){
       IpTimeout[0][0] = millis();                      // set time mark
 
         #if defined(SERIAL_debug)
-          if(DEBUG==1){
-            Serial.print(F("TX broadcast "));
-            Serial.print(BroadcastIP);
-            Serial.print(F(":"));
-            Serial.print(BroadcastPort);
-            Serial.print(F(" ["));
-            Serial.print(TxUdpBuffer[0], HEX);
-            for (int i=1; i<8; i++){
-              Serial.print(char(TxUdpBuffer[i]));
-              // Serial.print(F(" "));
-            }
-            Serial.println("]");
+          Serial.print(F("TX broadcast "));
+          Serial.print(BroadcastIP);
+          Serial.print(F(":"));
+          Serial.print(BroadcastPort);
+          Serial.print(F(" ["));
+          Serial.print(TxUdpBuffer[0], HEX);
+          for (int i=1; i<8; i++){
+            Serial.print(char(TxUdpBuffer[i]));
+            // Serial.print(F(" "));
           }
+          Serial.println(F("]"));
         #endif
 
     // DATA
@@ -625,24 +622,22 @@ void TxUDP(byte FROM, byte TO, byte A, byte B, byte C){
         RemoteSwLatency[0] = millis(); // set START time mark UDP command latency
 
         #if defined(SERIAL_debug)
-          if(DEBUG==1){
-            Serial.println();
-            Serial.print(F("TX ["));
-            Serial.print(TxUdpBuffer[0], HEX);
-            for (int i=1; i<4; i++){
-              Serial.print(char(TxUdpBuffer[i]));
-            }
-            Serial.print(TxUdpBuffer[4], BIN);
-            Serial.print(F("|"));
-            Serial.print(TxUdpBuffer[5], BIN);
-            Serial.print(F("|"));
-            Serial.print(TxUdpBuffer[6], BIN);
-            Serial.print(char(TxUdpBuffer[7]));
-            Serial.print(F("] "));
-            Serial.print(RemoteSwIP);
-            Serial.print(F(":"));
-            Serial.println(RemoteSwPort);
+          Serial.println();
+          Serial.print(F("TX ["));
+          Serial.print(TxUdpBuffer[0], HEX);
+          for (int i=1; i<4; i++){
+            Serial.print(char(TxUdpBuffer[i]));
           }
+          Serial.print(TxUdpBuffer[4], BIN);
+          Serial.print(F("|"));
+          Serial.print(TxUdpBuffer[5], BIN);
+          Serial.print(F("|"));
+          Serial.print(TxUdpBuffer[6], BIN);
+          Serial.print(char(TxUdpBuffer[7]));
+          Serial.print(F("] "));
+          Serial.print(RemoteSwIP);
+          Serial.print(F(":"));
+          Serial.println(RemoteSwPort);
         #endif
       }
     }
@@ -663,10 +658,10 @@ void RX_UDP(char FROM, char TO){
     InterruptON(0,0); // ptt, enc
     UDPpacketSize = UdpCommand.parsePacket();    // if there's data available, read a packet
     if (UDPpacketSize){
-      UdpCommand.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);      // read the packet into packetBufffer
+      // UdpCommand.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);      // read the packet into packetBufffer
+      UdpCommand.read(packetBuffer, 30);      // read the packet into packetBufffer
       // Print RAW
       // #if defined(SERIAL_debug)
-      //   if(DEBUG==1){
       //     Serial.print(F("RXraw "));
       //     for (int i = 0; i < 8; i++) {
       //       Serial.print(packetBuffer[i]);
@@ -676,7 +671,6 @@ void RX_UDP(char FROM, char TO){
       //     Serial.print(":");
       //     Serial.print(UdpCommand.remotePort());
       //     Serial.println();
-      //   }
       // #endif
       // ID-FROM-TO filter
       if(String(packetBuffer[0], DEC).toInt()==NET_ID
@@ -718,7 +712,6 @@ void RX_UDP(char FROM, char TO){
           lcd.clear();
 
           #if defined(SERIAL_debug)
-          if(DEBUG==1){
             Serial.print(F("RX ["));
             Serial.print(packetBuffer[0], HEX);
             for(int i=1; i<8; i++){
@@ -726,7 +719,7 @@ void RX_UDP(char FROM, char TO){
             }
             Serial.print(F("] "));
             Serial.print(UdpCommand.remoteIP());
-            Serial.print(":");
+            Serial.print(F(":"));
             Serial.println(UdpCommand.remotePort());
             for (int i = 0; i < 16; i++) {
               Serial.print(i);
@@ -741,7 +734,6 @@ void RX_UDP(char FROM, char TO){
               Serial.print(F(":"));
               Serial.println(DetectedRemoteSw [i] [4]);
             }
-          }
           #endif
 
         // RX DATA
@@ -755,33 +747,29 @@ void RX_UDP(char FROM, char TO){
           digitalWrite(ShiftOutLatchPin, HIGH);    // switch to output pin
 
           #if defined(SERIAL_debug)
-            if(DEBUG==1){
-              Serial.print(F("RX ["));
-              Serial.print(packetBuffer[0], HEX);
-              for(int i=1; i<4; i++){
-                Serial.print(char(packetBuffer[i]));
-              }
-              Serial.print((byte)packetBuffer[4], BIN);
-              Serial.print(F("|"));
-              Serial.print((byte)packetBuffer[5], BIN);
-              Serial.print(F("|"));
-              Serial.print((byte)packetBuffer[6], BIN);
-              Serial.print(F(";] "));
-              Serial.print(UdpCommand.remoteIP());
-              Serial.print(":");
-              Serial.print(UdpCommand.remotePort());
-              Serial.print(F(" Latency: "));
-              Serial.println(RemoteSwLatency[1]);
+            Serial.print(F("RX ["));
+            Serial.print(packetBuffer[0], HEX);
+            for(int i=1; i<4; i++){
+              Serial.print(char(packetBuffer[i]));
             }
+            Serial.print((byte)packetBuffer[4], BIN);
+            Serial.print(F("|"));
+            Serial.print((byte)packetBuffer[5], BIN);
+            Serial.print(F("|"));
+            Serial.print((byte)packetBuffer[6], BIN);
+            Serial.print(F(";] "));
+            Serial.print(UdpCommand.remoteIP());
+            Serial.print(F(":"));
+            Serial.print(UdpCommand.remotePort());
+            Serial.print(F(" Latency: "));
+            Serial.println(RemoteSwLatency[1]);
           #endif
           LcdNeedRefresh = true;
         }
       } // filtered end
       else{
         #if defined(SERIAL_debug)
-          if(DEBUG==1){
-            Serial.println(F("   Different NET-ID, or bad packet format"));
-          }
+          Serial.println(F("   Different NET-ID, or bad packet format"));
         #endif
       }
       memset(packetBuffer, 0, sizeof(packetBuffer));   // Clear contents of Buffer
@@ -797,16 +785,12 @@ void EthernetCheck(){
     if ((Ethernet.linkStatus() == Unknown || Ethernet.linkStatus() == LinkOFF) && EthLinkStatus==1) {
       EthLinkStatus=0;
       #if defined(SERIAL_debug)
-      // if(DEBUG==1){
         Serial.println(F("Ethernet DISCONNECTED"));
-      // }
       #endif
     }else if (Ethernet.linkStatus() == LinkON && EthLinkStatus==0) {
       EthLinkStatus=1;
       #if defined(SERIAL_debug)
-      // if(DEBUG==1){
         Serial.println(F("Ethernet CONNECTED"));
-      // }
       #endif
 
       lcd.clear();
@@ -1360,6 +1344,8 @@ void BandDecoderInput(){
         incomingByte = Serial.read();
         #if defined(DEBUG)
           Serial.print(incomingByte);
+          Serial.print("|");
+          Serial.println(incomingByte, HEX);
         #endif
         icomSM(incomingByte);
         rdIS="";
@@ -1476,6 +1462,10 @@ void BandDecoderInput(){
   #if defined(YAESU_CAT)
   while (Serial.available()) {
       rdYS="";
+      #if defined(DEBUG)
+        byte incomingByte = Serial.read();
+        Serial.write(incomingByte);
+      #else
       Serial.readBytesUntil(lf, rdY, 38);         // fill array from serial
           if (rdY[0] == 73 && rdY[1] == 70){      // filter
               for (int i=5; i<=12; i++){          // 6-13 position to freq
@@ -1490,30 +1480,37 @@ void BandDecoderInput(){
               #endif
           }
           memset(rdY, 0, sizeof(rdY));   // Clear contents of Buffer
+      #endif
   }
   #endif
   //----------------------------------- Yaesu CAT OLD
   #if defined(YAESU_CAT_OLD)
   while (Serial.available()) {
       rdYOS="";
-      Serial.readBytesUntil('240', rdYO, 5);                   // fill array from serial (240 = 0xF0)
-      if (rdYO[0] != 0xF0 && rdYO[1] != 0xF0 && rdYO[2] != 0xF0 && rdYO[3] != 0xF0 && rdYO[4] != 0xF0 && rdYO[5] != 0xF0){     // filter
-          for (int i=0; i<4; i++ ){
-              if (rdYO[i] < 10) {                              // leading zero
-                  rdYOS = rdYOS + 0;
-              }
-              rdYOS = rdYOS + String(rdYO[i], HEX);            // append BCD digit from HEX variable to string
-          }
-          rdYOS = rdYOS + 0;                                   // append Hz
-          freq = rdYOS.toInt();
-          FreqToBandRules();
-          bandSET();                                                                // set outputs relay
+      #if defined(DEBUG)
+        byte incomingByte = Serial.read();
+        Serial.write(incomingByte);
+        Serial.print(" ");
+      #else
+        Serial.readBytesUntil('240', rdYO, 5);                   // fill array from serial (240 = 0xF0)
+        if (rdYO[0] != 0xF0 && rdYO[1] != 0xF0 && rdYO[2] != 0xF0 && rdYO[3] != 0xF0 && rdYO[4] != 0xF0 && rdYO[5] != 0xF0){     // filter
+            for (int i=0; i<4; i++ ){
+                if (rdYO[i] < 10) {                              // leading zero
+                    rdYOS = rdYOS + 0;
+                }
+                rdYOS = rdYOS + String(rdYO[i], HEX);            // append BCD digit from HEX variable to string
+            }
+            rdYOS = rdYOS + 0;                                   // append Hz
+            freq = rdYOS.toInt();
+            FreqToBandRules();
+            bandSET();                                                                // set outputs relay
 
-          #if defined(SERIAL_echo)
-              serialEcho();
-          #endif
-      }
-      memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
+            #if defined(SERIAL_echo)
+                serialEcho();
+            #endif
+        }
+        memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
+      #endif
     }
   #endif
 
@@ -1525,6 +1522,10 @@ void BandDecoderInput(){
   };
   ArrayToInteger convert;
   while (Serial.available()) {
+    #if defined(DEBUG)
+      byte incomingByte = Serial.read();
+      Serial.write(incomingByte);
+    #else
       int numberOfBytes = Serial.readBytes(rdYO, 32);
       if(numberOfBytes == 32){
           convert.array[4] = 0;
@@ -1537,8 +1538,8 @@ void BandDecoderInput(){
           FreqToBandRules();                                // map fq to band
           bandSET();                                        // set outputs relay
       }
-
-    memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
+      memset(rdYO, 0, sizeof(rdYO));   // Clear contents of Buffer
+    #endif
   }
   #endif
 
@@ -1546,6 +1547,7 @@ void BandDecoderInput(){
     InterruptON(1,1); // ptt, enc
   #endif
 }
+
 //---------------------------------------------------------------------------------------------------------
 
 void BandDecoderOutput(){
@@ -1654,12 +1656,17 @@ void bandSET() {                                               // set outputs by
                             shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[0]);
     digitalWrite(ShiftOutLatchPin, HIGH);    // switch to output pin
 
-      #if !defined(YAESU_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
-          bcdOut();
-      #endif
-      #if defined(LCD)
-        LcdNeedRefresh = true;
-      #endif
+    #if !defined(YAESU_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
+        bcdOut();
+    #endif
+
+    #if defined(EthModule)
+      TxUDP(ThisDevice, RemoteDevice, ShiftByte[1], ShiftByte[0], 0x00);
+    #endif
+
+    #if defined(LCD)
+      LcdNeedRefresh = true;
+    #endif
   }
 
   // #if defined(EthModule)
@@ -1675,7 +1682,7 @@ void bandSET() {                                               // set outputs by
   //     #endif
   //   }
   // #endif
-  #if defined(EthModule)
+  #if defined(EthModule_XXX)
     #if defined(BcdIpRelay)
       TxUDP(ThisDevice, RemoteDevice, BAND, 0x00, 0x00);
     #else
