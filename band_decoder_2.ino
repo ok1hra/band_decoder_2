@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20190317";
+const char* REV = "20190330";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -114,7 +114,7 @@ byte NET_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace b
 #define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
 #define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
 // #define DISABLE_DIVIDER    // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
-#define DEBUG              // enable some debugging
+// #define DEBUG              // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
 
 const long Freq2Band[16][2] = {/*
@@ -200,7 +200,7 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
 
 //============================================================================================================
 
-#define SERIAL_debug
+// #define SERIAL_debug
 // #define UdpBroadcastDebug_debug
 
 #if defined(LCD)
@@ -1273,6 +1273,10 @@ void BandDecoderInput(){
       bitSet(SelectBank, 2);
     }else if(digitalRead(BcdIn4Pin)==0){
       bitSet(SelectBank, 3);
+    }
+    // if BCD not selected, use first
+    if(SelectBank==B00000000){
+      SelectBank=B00000001;
     }
     if(SelectBank!=SelectBankPrev){
       bandSET();
