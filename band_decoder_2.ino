@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20190330";
+const char* REV = "20190403";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -112,7 +112,7 @@ byte NET_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace b
 #define WATCHDOG       20     // [sec] determines the time, after which the all relay OFF, if missed next input data - uncomment for the enabled
 #define REQUEST        500    // [ms] use TXD output for sending frequency request
 #define CIV_ADRESS    0x56    // CIV input HEX Icom adress (0x is prefix)
-#define CIV_ADR_OUT  0x56     // CIV output HEX Icom adress (0x is prefix)
+#define CIV_ADR_OUT   0x56    // CIV output HEX Icom adress (0x is prefix)
 // #define DISABLE_DIVIDER    // for lowest voltage D-SUB pin 13 inputs up to 5V only - need open JP9
 // #define DEBUG              // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
@@ -182,6 +182,7 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
                                                    OUTPUTS
                                     (for second eight need aditional board)*/
         };
+        const int NumberOfBoards = 1;    // number of eight byte shift register 0-x
 
 //=====[ BCD OUT ]===========================================================================================
 
@@ -333,8 +334,7 @@ long VoltageRefresh[2] = {0, 3000};   // refresh in ms
 float ArefVoltage = 4.303;            // Measure on Aref pin 20 for calibrate
 float Divider = 1;
 
-int NumberOfBoards = 1;    // number of eight byte shift register 0-x
-byte ShiftByte[5];
+byte ShiftByte[NumberOfBoards];
 
 // int SelectOut = 0;
 // int x;
@@ -1622,17 +1622,14 @@ void bandSET() {                                               // set outputs by
     ShiftByte[1] = B00000000;
 
     #if defined(MULTI_OUTPUT_BY_BCD)
-      for (int i = 0; i < 8; i++) {   // outputs 1-8
+      for (int i = 0; i < 17; i++) {   // outputs 1-8
         for (int y = 0; y < 4; y++) { // bcd bit
           if(bitRead(SelectBank,y)==1 && bitRead(matrix[BAND][i],y)==1){
-            bitSet(ShiftByte[0], i);
-          }
-        }
-      }
-      for (int i = 8; i < 16; i++) {   // outputs 9-16
-        for (int y = 0; y < 4; y++) { // bcd bit
-          if(bitRead(SelectBank,y)==1 && bitRead(matrix[BAND][i],y)==1){
-            bitSet(ShiftByte[1], i);
+            if(i<8){
+              bitSet(ShiftByte[0], i);
+            }else{
+              bitSet(ShiftByte[1], i-8);
+            }
           }
         }
       }
@@ -1649,12 +1646,6 @@ void bandSET() {                                               // set outputs by
       }
     #endif
 
-    // if(BAND > 0 && BAND < 9){
-    //   ShiftByte[0] = ShiftByte[0] | (1<<BAND-1);    // Set the n-th bit
-    // }
-    // if(BAND > 7 && BAND < 17){
-    //   ShiftByte[1] = ShiftByte[1] | (1<<BAND-9);    // Set the n-th bit
-    // }
     digitalWrite(ShiftOutLatchPin, LOW);    // ready for receive data
     if(NumberOfBoards > 1){ shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[1]); }
                             shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[0]);
