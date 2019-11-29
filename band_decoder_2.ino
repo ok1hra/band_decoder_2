@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20190403";
+const char* REV = "20191129";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -30,7 +30,7 @@ Support inputs
   * ICOM CI-V
   * KENWOOD - CAT
   * FLEX 6000 CAT series
-  * YAESU BCD
+  * YAESU / ELECRAFT BCD
   * ICOM ACC voltage
   * YAESU CAT - TRX since 2008 ascii format
   * YAESU CAT old binary format (tested on FT-817)
@@ -57,6 +57,7 @@ Outputs
 
   Changelog
   ---------
+  2019-11 YAESU / ELECRAFT input BCD format
   2018-03 manual switch between four output on same band by BCD input - TNX ZS1LS behind inspiration
   2018-12 PTT bug fix
           LCD PCF8574 support
@@ -69,7 +70,8 @@ Outputs
 */
 //=====[ Inputs ]=============================================================================================
 
-// #define YAESU_BCD            // TTL BCD in A
+// #define INPUT_BCD            // TTL BCD in A
+int BcdInputFormat = 0;         // if enable INPUT_BCD, set format 0 - YAESU, 1 ELECRAFT
 // #define ICOM_ACC             // voltage 0-8V on pin4 ACC(2) connector - need calibrate table
 // #define INPUT_SERIAL         // telnet ascii input - cvs format [band],[freq]\n
 #define ICOM_CIV             // read frequency from CIV
@@ -79,7 +81,7 @@ Outputs
 // #define YAESU_CAT_OLD        // Old binary format RS232 CAT ** tested on FT-817 **
 // #define YAESU_CAT_FT100      // RS232 CAT YAESU for FT100(D)
 // #define MULTI_OUTPUT_BY_BCD  // manual switch between four output on same band by BCD input
-                                // - YAESU_BCD input must be disable
+                                // - INPUT_BCD input must be disable
                                 // - BCD output will be disble
                                 // - it must always be select (grounded) one of BCD input
 //=====[ Outputs ]============================================================================================
@@ -97,8 +99,8 @@ Outputs
 
 #define LCD                      // Uncoment to Enable I2C LCD
 const byte LcdI2Caddress = 0x3F; // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
-#define LCD_PCF8574              // If LCD uses PCF8574 chip
-//#define LCD_PCF8574T             // If LCD uses PCF8574T chip
+//#define LCD_PCF8574              // If LCD uses PCF8574 chip
+#define LCD_PCF8574T             // If LCD uses PCF8574T chip
 //#define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
 
 // #define EthModule             // enable Ethernet module if installed
@@ -129,17 +131,17 @@ Freq Hz from       to   Band number
     {24890000,  24990000},  // #8  [12m]
     {28000000,  29700000},  // #9  [10m]
     {50000000,  52000000},  // #10  [6m]
-   {144000000, 146000000},  // #11  [2m]
-   {430000000, 440000000},  // #12  [70cm]
-   {1240000000, 1300000000},  // #13  [23cm]
-   {2300000000, 2450000000},  // #14  [13cm]
-   {3300000000, 3500000000},  // #15  [9cm]
-   {5650000000, 5850000000},  // #16  [6cm]
+    {70000000,  72000000},  // #11  [4m]
+   {144000000, 146000000},  // #12  [2m]
+   {430000000, 440000000},  // #13  [70cm]
+   {1240000000, 1300000000},  // #14  [23cm]
+   {2300000000, 2450000000},  // #15  [13cm]
+   {3300000000, 3500000000},  // #16  [9cm]
+   // {5650000000, 5850000000},  // #16  [6cm]
 };
-
 //=====[ Sets band -->  to output in MATRIX table ]===========================================================
 
-        const byte matrix[17][16] = { /* band out
+        const byte matrix[17][40] = { /* band out
 
         If enable #define MULTI_OUTPUT_BY_BCD
         you can select outputs manually to ground one from BCD inputs
@@ -156,24 +158,24 @@ Freq Hz from       to   Band number
 
         0x0F = this output enable for any BCD input (enable all bit)
 
-        Band 0 --> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  1 }, /* first eight shift register board
-\       Band 1 --> */ { 0x0F,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
- \      Band 2 --> */ { 0,  0x0F,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
-  \     Band 3 --> */ { 0,  0,  0x0F,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
-   \    Band 4 --> */ { 0,  0,  0,  0x0F,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
-    \   Band 5 --> */ { 0,  0,  0,  0,  0x0F,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
-     \  Band 6 --> */ { 0,  0,  0,  0,  0,  0x0F,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
-IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
-     /  Band 8 --> */ { 0,  0,  0,  0,  0,  0,  0,  0x0F,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+        Band 0 --> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /* first eight shift register board
+\       Band 1 --> */ { 0x0F,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+ \      Band 2 --> */ { 0,  0x0F,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+  \     Band 3 --> */ { 0,  0,  0x0F,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+   \    Band 4 --> */ { 0,  0,  0,  0x0F,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+    \   Band 5 --> */ { 0,  0,  0,  0,  0x0F,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+     \  Band 6 --> */ { 0,  0,  0,  0,  0,  0x0F,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+     /  Band 8 --> */ { 0,  0,  0,  0,  0,  0,  0,  0x0F,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
 
-    /   Band 9 --> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0x0F,  0,  0,  0,  0,  0,  0,  0 }, /* second eight shift register board
-   /    Band 10 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0x0F,  0,  0,  0,  0,  0,  0 }, /* (optional)
-  /     Band 11 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0x0F,  0,  0,  0,  0,  0 }, /*
- /      Band 12 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0x0F,  0,  0,  0,  0 }, /*
-/       Band 13 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0x0F,  0,  0,  0 }, /*
-        Band 14 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0x0F,  0,  0 }, /*
-        Band 15 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0x0F,  0 }, /*
-        Band 16 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0x0F }, /*
+    /   Band 9 --> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0x0F,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /* second eight shift register board
+   /    Band 10 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0x0F,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /* (optional)
+  /     Band 11 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0x0F,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+ /      Band 12 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0x0F,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+/       Band 13 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0x0F,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+        Band 14 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0x0F,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+        Band 15 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
+        Band 16 -> */ { 0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0x0F,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0 }, /*
                         |   |   |   |   |   |   |   |     |   |   |   |   |   |   |   |
                         V   V   V   V   V   V   V   V     V   V   V   V   V   V   V   V
                      ----------------------------------  ---------------------------------
@@ -361,7 +363,7 @@ int timeout2;
     int band = 0;
     int counter = 0;
 #endif
-#if defined(YAESU_BCD)
+#if defined(INPUT_BCD)
     long BcdInRefresh[2] = {0, 1000};   // refresh in ms
 #endif
 #if defined(KENWOOD_PC) || defined(YAESU_CAT) || defined(FLEX_6000)
@@ -425,7 +427,7 @@ void setup() {
     digitalWrite(PttDetectorPin, HIGH);
 
   pinMode(PttOffPin, OUTPUT);
-  #if defined(YAESU_BCD) || defined(MULTI_OUTPUT_BY_BCD)
+  #if defined(INPUT_BCD) || defined(MULTI_OUTPUT_BY_BCD)
     pinMode(BcdIn1Pin, INPUT);
       // digitalWrite(Id3Pin, INPUT_PULLUP);
       digitalWrite(BcdIn1Pin, HIGH);
@@ -461,7 +463,7 @@ void setup() {
       //------------------------------------------------------
     #endif
 
-    lcd.createChar(0, LockChar);
+//    lcd.createChar(0, LockChar);
     #if defined(EthModule)
       lcd.createChar(1, EthChar);
     #endif
@@ -493,10 +495,10 @@ void setup() {
       #if defined(YAESU_CAT) || defined(YAESU_CAT_OLD) || defined(YAESU_CAT_FT100)
         lcd.print("YAESU       ");
       #endif
-      #if defined(YAESU_BCD)
-        lcd.print("YAESU BCD   ");
+      #if defined(INPUT_BCD)
+        lcd.print("INPUT BCD   ");
       #endif
-      #if !defined(YAESU_BCD) && !defined(ICOM_ACC)
+      #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
         lcd.setCursor(10,0);
         lcd.print(SERBAUD);
       #endif
@@ -1042,7 +1044,7 @@ void LcdDisplay(){
       lcd.print(BAND);
       lcd.print(" ");
 
-      #if !defined(YAESU_BCD) && !defined(ICOM_ACC)
+      #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
         Space(7, String(freq/1000).length(), ' ');
         PrintFreq();
       #endif
@@ -1057,7 +1059,7 @@ void LcdDisplay(){
         }else{
           lcd.print(" ");        // Lock icon
         }
-        #if !defined(YAESU_BCD) && !defined(ICOM_ACC)
+        #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
           lcd.setCursor(13,1);
           lcd.print("kHz");
         #endif
@@ -1154,7 +1156,7 @@ void WebServer(){
             #if defined(YAESU_CAT_FT100)
               client.print(F("YAESU [FT100]"));
             #endif
-            #if defined(YAESU_BCD)
+            #if defined(INPUT_BCD)
               client.print(F("BCD"));
             #endif
             #if defined(ICOM_ACC)
@@ -1258,7 +1260,7 @@ void DCinMeasure(){
 //---------------------------------------------------------------------------------------------------------
 
 void BandDecoderInput(){
-  #if !defined(YAESU_BCD)
+  #if !defined(INPUT_BCD)
     InterruptON(0,0); // ptt, enc
   #endif
 
@@ -1377,19 +1379,19 @@ void BandDecoderInput(){
   #endif
 
   //----------------------------------- Yaesu BCD
-  #if defined(YAESU_BCD)
+  #if defined(INPUT_BCD)
     if (millis() - BcdInRefresh[0] > BcdInRefresh[1]){
       BAND = 0;
-      if(digitalRead(BcdIn1Pin)==0){
+      if(digitalRead(BcdIn1Pin)==BcdInputFormat){
         BAND = BAND | (1<<3);    // Set the n-th bit
       }
-      if(digitalRead(BcdIn2Pin)==0){
+      if(digitalRead(BcdIn2Pin)==BcdInputFormat){
         BAND = BAND | (1<<2);
       }
-      if(digitalRead(BcdIn3Pin)==0){
+      if(digitalRead(BcdIn3Pin)==BcdInputFormat){
         BAND = BAND | (1<<1);
       }
-      if(digitalRead(BcdIn4Pin)==0){
+      if(digitalRead(BcdIn4Pin)==BcdInputFormat){
         BAND = BAND | (1<<0);
       }
       bandSET();
@@ -1547,7 +1549,7 @@ void BandDecoderInput(){
   }
   #endif
 
-  #if !defined(YAESU_BCD)
+  #if !defined(INPUT_BCD)
     InterruptON(1,1); // ptt, enc
   #endif
 }
@@ -1618,8 +1620,9 @@ void bandSET() {                                               // set outputs by
   }
 
   if((PTT==false && previousBAND != 0 ) || (PTT==true && previousBAND == 0)){
-    ShiftByte[0] = B00000000;
-    ShiftByte[1] = B00000000;
+    for (int i = 0; i < NumberOfBoards; i++) {
+      ShiftByte[1] = B00000000;
+    }
 
     #if defined(MULTI_OUTPUT_BY_BCD)
       for (int i = 0; i < 17; i++) {   // outputs 1-8
@@ -1644,14 +1647,30 @@ void bandSET() {                                               // set outputs by
           ShiftByte[1] = ShiftByte[1] | (1<<i-8);
         }
       }
+      for (int i = 16; i < 24; i++) {   // outputs 17-24
+        if(matrix[BAND][i]>0){
+          ShiftByte[2] = ShiftByte[2] | (1<<i-16);
+        }
+      }
+      for (int i = 24; i < 32; i++) {   // outputs 25-32
+        if(matrix[BAND][i]>0){
+          ShiftByte[3] = ShiftByte[3] | (1<<i-24);
+        }
+      }
+      for (int i = 32; i < 40; i++) {   // outputs 33-40
+        if(matrix[BAND][i]>0){
+          ShiftByte[4] = ShiftByte[4] | (1<<i-32);
+        }
+      }
     #endif
 
     digitalWrite(ShiftOutLatchPin, LOW);    // ready for receive data
-    if(NumberOfBoards > 1){ shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[1]); }
-                            shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[0]);
+      for (int i = NumberOfBoards; i >0; i--) {   // outputs 9-16
+        shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftByte[i-1]);
+      }
     digitalWrite(ShiftOutLatchPin, HIGH);    // switch to output pin
 
-    #if !defined(YAESU_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
+    #if !defined(INPUT_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
         bcdOut();
     #endif
 
@@ -1723,7 +1742,7 @@ void serialEcho() {
 }
 //---------------------------------------------------------------------------------------------------------
 
-#if !defined(YAESU_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
+#if !defined(INPUT_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
     void bcdOut(){
         if (BCDmatrixOUT[0][BAND] == 1){ digitalWrite(BcdIn1Pin, HIGH); }else{ digitalWrite(BcdIn1Pin, LOW);}
         if (BCDmatrixOUT[1][BAND] == 1){ digitalWrite(BcdIn2Pin, HIGH); }else{ digitalWrite(BcdIn2Pin, LOW);}
@@ -1745,7 +1764,10 @@ void watchDog() {
 //---------------------------------------------------------------------------------------------------------
 
 #if defined(ICOM_CIV) || defined(ICOM_CIV_OUT)
-
+/*
+FE|FE|0|56|0|70|99|99|52|0|FD
+FE|FE|0|56|0|30| 0| 0|53|0|FD
+*/
     int icomSM(byte b){      // state machine
         // This filter solves read from 0x00 0x05 0x03 commands and 00 E0 F1 address used by software
         // Serial.print(b, HEX);
@@ -1798,6 +1820,26 @@ void watchDog() {
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1; rdI[7] = 0;}; break;
         }
+    }
+    //---------------------------------------------------------------------------------------------------------
+    bool CheckPartFreqInRange(byte FRQ, int PART){
+      bool result=false;
+      for (int i=0; i<16; i++){
+        if( PartFreqToByte(Freq2Band[i][0],PART)<FRQ && FRQ<PartFreqToByte(Freq2Band[i][1],PART)){
+          result=true;
+        }
+      }
+      return result;
+    }
+    //---------------------------------------------------------------------------------------------------------
+    byte PartFreqToByte(long FREQ, int PART){
+      String StrFreq=String(FREQ);
+      while (StrFreq.length() < 10){                 // leding zeros
+        StrFreq = 0 + StrFreq;
+      }
+      StrFreq=StrFreq.substring(PART*2,PART*2+2);
+      byte PartFreq = StrFreq.toInt();
+      return PartFreq;
     }
     //---------------------------------------------------------------------------------------------------------
 
