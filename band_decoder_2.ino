@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20191129";
+const char* REV = "20200214";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -57,6 +57,7 @@ Outputs
 
   Changelog
   ---------
+  2020-02 fix out set
   2019-11 YAESU / ELECRAFT input BCD format
   2018-03 manual switch between four output on same band by BCD input - TNX ZS1LS behind inspiration
   2018-12 PTT bug fix
@@ -1621,7 +1622,7 @@ void bandSET() {                                               // set outputs by
 
   if((PTT==false && previousBAND != 0 ) || (PTT==true && previousBAND == 0)){
     for (int i = 0; i < NumberOfBoards; i++) {
-      ShiftByte[1] = B00000000;
+      ShiftByte[i] = B00000000;
     }
 
     #if defined(MULTI_OUTPUT_BY_BCD)
@@ -1737,7 +1738,8 @@ void serialEcho() {
     Serial.print(BAND);
     Serial.print(",");
     Serial.print(freq);
-    Serial.println(">");
+    Serial.print("> ");
+    Serial.println(ShiftByte[0], BIN);
     Serial.flush();
 }
 //---------------------------------------------------------------------------------------------------------
