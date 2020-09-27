@@ -910,7 +910,7 @@ void PttOff(){
 
 void FrequencyRequest(){
   #if defined(REQUEST)
-  if(REQUEST > 0 && (millis() - RequestTimeout[0] > RequestTimeout[1])){
+  if(REQUEST > 0 && ((millis() - RequestTimeout[0]) > RequestTimeout[1])){
 
     #if defined(ICOM_CIV)
       txCIV(3, 0, CIV_ADRESS);  // ([command], [freq]) 3=read
@@ -1202,7 +1202,7 @@ void WebServer(){
 
 void NetId(){
   #if defined(EthModule)
-  if(millis()-GetNetIdTimer[0]>GetNetIdTimer[1]){
+  if((millis()-GetNetIdTimer[0])>GetNetIdTimer[1]){
     if(NET_ID != GetBoardId()){
       NET_ID = GetBoardId();
       TxUDP(ThisDevice, RemoteDevice, 'b', 'r', 'o');
@@ -1244,7 +1244,7 @@ float volt(int raw, float divider) {
 //-------------------------------------------------------------------------------------------------------
 
 void DCinMeasure(){
-  if (millis() - VoltageRefresh[0] > VoltageRefresh[1]){
+  if ((millis() - VoltageRefresh[0]) > VoltageRefresh[1]){
     DCinVoltage = volt(analogRead(VoltagePin), ResistorCoeficient);
     #if defined(LCD)
       if (DCinVoltage<7){
@@ -1645,22 +1645,22 @@ void bandSET() {                                               // set outputs by
       }
       for (int i = 8; i < 16; i++) {   // outputs 9-16
         if(matrix[BAND][i]>0){
-          ShiftByte[1] = ShiftByte[1] | (1<<i-8);
+          ShiftByte[1] = ShiftByte[1] | (1<<(i-8));
         }
       }
       for (int i = 16; i < 24; i++) {   // outputs 17-24
         if(matrix[BAND][i]>0){
-          ShiftByte[2] = ShiftByte[2] | (1<<i-16);
+          ShiftByte[2] = ShiftByte[2] | (1<<(i-16));
         }
       }
       for (int i = 24; i < 32; i++) {   // outputs 25-32
         if(matrix[BAND][i]>0){
-          ShiftByte[3] = ShiftByte[3] | (1<<i-24);
+          ShiftByte[3] = ShiftByte[3] | (1<<(i-24));
         }
       }
       for (int i = 32; i < 40; i++) {   // outputs 33-40
         if(matrix[BAND][i]>0){
-          ShiftByte[4] = ShiftByte[4] | (1<<i-32);
+          ShiftByte[4] = ShiftByte[4] | (1<<(i-32));
         }
       }
     #endif
