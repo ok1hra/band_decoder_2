@@ -120,7 +120,7 @@ byte NET_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace b
 // #define DEBUG              // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
 
-const long Freq2Band[16][2] = {/*
+const uint32_t /*long */ Freq2Band[16][2] = {/*
 Freq Hz from       to   Band number
 */   {1810000,   2000000},  // #1 [160m]
      {3500000,   3800000},  // #2  [80m]
