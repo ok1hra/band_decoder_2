@@ -220,7 +220,7 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
   #endif
 
 
-  long LcdRefresh[2]{0,500};
+ uint32_t /* long */ LcdRefresh[2]{0,500};
   const char* ANTname[17][4] = {
 
 /*    If enable #define MULTI_OUTPUT_BY_BCD
@@ -323,7 +323,7 @@ const int ShiftOutClockPin = 9;   // CLOCK
 
 int BAND = 0;
 int previousBAND = -1;
-long freq = 0;
+uint32_t /*long */ freq = 0;
 bool PTT = false;
 long PttTiming[2]={0, 10};            // debouncing time and also minimal PTT on time in ms
 float DCinVoltage;
@@ -333,7 +333,7 @@ float DCinVoltage;
   float ResistorCoeficient = 6.0;
 #endif
 
-long VoltageRefresh[2] = {0, 3000};   // refresh in ms
+uint32_t /*long */ VoltageRefresh[2] = {0, 3000};   // refresh in ms
 float ArefVoltage = 4.303;            // Measure on Aref pin 20 for calibrate
 float Divider = 1;
 
@@ -341,7 +341,7 @@ byte ShiftByte[NumberOfBoards];
 
 // int SelectOut = 0;
 // int x;
-  long RequestTimeout[2]={0,
+  uint32_t /*long */ RequestTimeout[2]={0,
     #if defined(REQUEST)
       REQUEST
     #else
@@ -356,7 +356,7 @@ int timeout2;
 #if defined(WATCHDOG)
     int previous;
     int timeout;
-    long WatchdogTimeout[2] = {-WATCHDOG*1000, WATCHDOG*1000};
+  long WatchdogTimeout[2] = {-WATCHDOG*1000, WATCHDOG*1000};
 #endif
 #if defined(ICOM_ACC)
     float AccVoltage = 0;
@@ -1874,7 +1874,7 @@ FE|FE|0|56|0|30| 0| 0|53|0|FD
     unsigned int hexToDec(String hexString) {
         unsigned int decValue = 0;
         int nextInt;
-        for (int i = 0; i < hexString.length(); i++) {
+        for (uint8_t i = 0; i < hexString.length(); i++) {
             nextInt = int(hexString.charAt(i));
             if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
             if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
