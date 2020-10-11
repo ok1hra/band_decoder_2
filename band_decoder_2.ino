@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20200214";
+const char* REV = "20201011";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -45,6 +45,8 @@ Outputs
   * Kenwood CAT
   * YAESU CAT - TRX since 2008 ascii format
   * IP relay with automatic pair by rotary encoder ID
+  * PTT by band - distributed PTT to output, dependency by frequency - TNX Tim W4YN
+  * Analog (PWM) output by preset table
 
   Major changes
   -------------
@@ -57,6 +59,8 @@ Outputs
 
   Changelog
   ---------
+  2020-10 PWM (analog) output
+  2020-07 PTT by band
   2020-02 fix out set
   2019-11 YAESU / ELECRAFT input BCD format
   2018-03 manual switch between four output on same band by BCD input - TNX ZS1LS behind inspiration
@@ -95,11 +99,13 @@ int BcdInputFormat = 0;         // if enable INPUT_BCD, set format 0 - YAESU, 1 
 // #define KENWOOD_PC_OUT     // send frequency to RS232 CAT
 // #define YAESU_CAT_OUT      // send frequency to RS232 CAT ** for operation must disable REQUEST **
 // #define SERIAL_echo        // Feedback on serial line in same baudrate, CVS format <[band],[freq]>\n
+// #define PTT_BY_BAND        // distributed PTT dependency to band (disable band decoder outputs) TNX Tim W4YN for idea
+// #define PWM_OUT               // PWM on D5 with rc filter (10k/10u) represent analog output J2.12
 
 //=====[ Hardware ]=============================================================================================
 
 #define LCD                      // Uncoment to Enable I2C LCD
-const byte LcdI2Caddress = 0x3F; // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
+const byte LcdI2Caddress = 0x27; // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
 //#define LCD_PCF8574              // If LCD uses PCF8574 chip
 #define LCD_PCF8574T             // If LCD uses PCF8574T chip
 //#define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
@@ -124,21 +130,22 @@ const long Freq2Band[16][2] = {/*
 Freq Hz from       to   Band number
 */   {1810000,   2000000},  // #1 [160m]
      {3500000,   3800000},  // #2  [80m]
-     {7000000,   7200000},  // #3  [40m]
-    {10100000,  10150000},  // #4  [30m]
-    {14000000,  14350000},  // #5  [20m]
-    {18068000,  18168000},  // #6  [17m]
-    {21000000,  21450000},  // #7  [15m]
-    {24890000,  24990000},  // #8  [12m]
-    {28000000,  29700000},  // #9  [10m]
-    {50000000,  52000000},  // #10  [6m]
-    {70000000,  72000000},  // #11  [4m]
-   {144000000, 146000000},  // #12  [2m]
-   {430000000, 440000000},  // #13  [70cm]
-   {1240000000, 1300000000},  // #14  [23cm]
-   {2300000000, 2450000000},  // #15  [13cm]
-   {3300000000, 3500000000},  // #16  [9cm]
-   // {5650000000, 5850000000},  // #16  [6cm]
+     {5298000,   5403000},  // #3  [60m]
+     {7000000,   7200000},  // #4  [40m]
+    {10100000,  10150000},  // #5  [30m]
+    {14000000,  14350000},  // #6  [20m]
+    {18068000,  18168000},  // #7  [17m]
+    {21000000,  21450000},  // #8  [15m]
+    {24890000,  24990000},  // #9  [12m]
+    {28000000,  29700000},  // #10  [10m]
+    {50000000,  52000000},  // #11  [6m]
+    {70000000,  72000000},  // #12  [4m]
+   {144000000, 146000000},  // #13  [2m]
+   {430000000, 440000000},  // #14  [70cm]
+   {1240000000, 1300000000},  // #15  [23cm]
+   {2300000000, 2450000000},  // #16  [13cm]
+   // {3300000000, 3500000000},  // #17  [9cm]
+   // {5650000000, 5850000000},  // #18  [6cm]
 };
 //=====[ Sets band -->  to output in MATRIX table ]===========================================================
 
@@ -201,7 +208,29 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
                             */ { 0,  0,  0,  0,  1,  1,  1,  1,  0,  0,  0, 0, 1, 1, 1, 1 }, /* --> DB25 Pin 12
                             */ { 0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1, 1, 1, 1, 1, 1 }, /* --> DB25 Pin 25
         */};
-
+//=====[ PWM OUT ]===========================================================================================
+#if defined(PWM_OUT)
+  const long PwmByBand[17] = {/*
+  PWM 0-255
+  */ 0,    // #0  OUT of band
+     11,   // #1  [160m] 0,23V
+     24,   // #2  [80m] 0,46V
+     36,   // #3  [60m] 0,69V
+     49,   // #4  [40m] 0,92V
+     62,   // #5  [30m] 1,15V
+     74,   // #6  [20m] 1,38V
+     87,   // #7  [17m] 1,61V
+     99,  // #8  [15m] 1,84V
+     111,  // #9  [12m] 2,07V
+     124,  // #10 [10m] 2,3V
+     137,  // #11 [6m]  2,53V
+     180,  // #12 [4m]
+     195,  // #13 [2m]
+     210,  // #14 [70cm]
+     225,  // #15 [23cm]
+     240,  // #16 [13cm]
+  };
+#endif
 //============================================================================================================
 
 // #define SERIAL_debug
@@ -223,7 +252,10 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
   long LcdRefresh[2]{0,500};
   const char* ANTname[17][4] = {
 
-/*    If enable #define MULTI_OUTPUT_BY_BCD
+/*
+    - If enable #define PTT_BY_BAND output name represent diffrent devices (TRX)
+
+    - If enable #define MULTI_OUTPUT_BY_BCD
       you can fill name for another antennas on the same band
       dependency to select BCD input
 
@@ -316,6 +348,7 @@ const int BcdIn3Pin = 4;          // BCD-3 in/out
   const int ShiftInDataPin = 4;   // [ShiftIn]
 const int BcdIn2Pin = 5;          // BCD-2 in/out
   const int ShiftInLatchPin = 5;  // [ShiftIn]
+  const int PwmOutPin = 5;        // [PWM]
 const int PttOffPin = 6;          // PTT out OFF switch
 const int ShiftOutDataPin = 7;    // DATA
 const int ShiftOutLatchPin = 8;   // LATCH
@@ -428,7 +461,7 @@ void setup() {
     digitalWrite(PttDetectorPin, HIGH);
 
   pinMode(PttOffPin, OUTPUT);
-  #if defined(INPUT_BCD) || defined(MULTI_OUTPUT_BY_BCD)
+  #if ( defined(INPUT_BCD) || defined(MULTI_OUTPUT_BY_BCD) ) && !defined(PWM_OUT)
     pinMode(BcdIn1Pin, INPUT);
       // digitalWrite(Id3Pin, INPUT_PULLUP);
       digitalWrite(BcdIn1Pin, HIGH);
@@ -441,6 +474,7 @@ void setup() {
   #else
     pinMode(BcdIn1Pin, OUTPUT);
     pinMode(BcdIn2Pin, OUTPUT);
+    pinMode(PwmOutPin, OUTPUT);
     pinMode(BcdIn3Pin, OUTPUT);
     pinMode(BcdIn4Pin, OUTPUT);
   #endif
@@ -470,43 +504,43 @@ void setup() {
     #endif
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("Version:");
+    lcd.print(F("Version:"));
     lcd.setCursor(7,1);
     lcd.print(REV);
     delay(1000);
     lcd.clear();
     lcd.setCursor(0,0);
       #if defined(INPUT_SERIAL)
-        lcd.print("SERIAL      ");
+        lcd.print(F("SERIAL      "));
       #endif
       #if defined(ICOM_CIV)
-        lcd.print("ICOM        ");
+        lcd.print(F("ICOM        "));
         lcd.print(CIV_ADRESS, HEX);
-        lcd.print("h");
+        lcd.print(F("h"));
       #endif
       #if defined(ICOM_ACC)
-      lcd.print("ICOM ACC    ");
+      lcd.print(F("ICOM ACC    "));
       #endif
       #if defined(KENWOOD_PC)
-        lcd.print("KENWOOD      ");
+        lcd.print(F("KENWOOD      "));
       #endif
       #if defined(FLEX_6000)
-        lcd.print("FLEX-6000    ");
+        lcd.print(F("FLEX-6000    "));
       #endif
       #if defined(YAESU_CAT) || defined(YAESU_CAT_OLD) || defined(YAESU_CAT_FT100)
-        lcd.print("YAESU       ");
+        lcd.print(F("YAESU       "));
       #endif
       #if defined(INPUT_BCD)
-        lcd.print("INPUT BCD   ");
+        lcd.print(F("INPUT BCD   "));
       #endif
       #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
         lcd.setCursor(10,0);
         lcd.print(SERBAUD);
       #endif
     lcd.setCursor(0,1);
-    lcd.print("DC input ");
+    lcd.print(F("DC input "));
     lcd.print(volt(analogRead(VoltagePin), ResistorCoeficient));
-    lcd.print("V");
+    lcd.print(F("V"));
     delay(3000);
     lcd.clear();
   #endif
@@ -877,6 +911,10 @@ void InterruptON(int ptt, int enc){
 void PttDetector(){   // call from interupt
   // digitalWrite(PttOffPin, HIGH);
   PTT = true;
+  #if defined(PTT_BY_BAND)
+    FreqToBandRules();
+    bandSET();
+  #endif
   #if defined(LCD)
     LcdNeedRefresh = true;
   #endif
@@ -894,6 +932,10 @@ void PttOff(){
     // digitalWrite(PttOffPin, LOW);
     #if defined(EthModule) && defined(UdpBroadcastDebug_debug)
       TxBroadcastUdp("PttOff-" + String(DetectedRemoteSw[NET_ID][4]) + "-" + String(RemoteSwLatencyAnsw) );
+    #endif
+    #if defined(PTT_BY_BAND)
+      BAND=0;
+      bandSET();
     #endif
     PTT = false;
     #if defined(LCD)
@@ -917,12 +959,12 @@ void FrequencyRequest(){
     #endif
 
     #if defined(KENWOOD_PC) || defined(YAESU_CAT)
-          Serial.print("IF;");
+          Serial.print(F("IF;"));
           Serial.flush();       // Waits for the transmission of outgoing serial data to complete
     #endif
 
     #if defined(FLEX_6000)
-          Serial.print("FA;");
+          Serial.print(F("FA;"));
           Serial.flush();       // Waits for the transmission of outgoing serial data to complete
     #endif
 
@@ -1002,28 +1044,34 @@ void LcdDisplay(){
           lcd.print(String(ANTname[BAND][NameByBcd]).substring(0, 11));   // crop up to 7 char
           Space(11, String(ANTname[BAND][NameByBcd]).length(), ' ');
         }else{
-          lcd.print("NetID-");
+          lcd.print(F("NetID-"));
           lcd.print(NET_ID, HEX);
-          lcd.print(" n/a");
+          lcd.print(F(" n/a"));
         }
       #endif
 
       lcd.setCursor(11,0);
-      lcd.print(" ");
+      lcd.print(F(" "));
       #if defined(MULTI_OUTPUT_BY_BCD)
-        lcd.print("Ant");
+        lcd.print(F("Ant"));
         if(SelectBank==0){
-          lcd.print("-");
+          lcd.print(F("-"));
         }else if(SelectBank==1){
-          lcd.print("1");
+          lcd.print(F("1"));
         }else if(SelectBank==2){
-          lcd.print("2");
+          lcd.print(F("2"));
         }else if(SelectBank==4){
-          lcd.print("3");
+          lcd.print(F("3"));
         }else if(SelectBank==8){
-          lcd.print("4");
+          lcd.print(F("4"));
         }
-      #else
+      #endif
+
+      #if defined(PWM_OUT)
+        lcd.print(PwmByBand[BAND]);
+        lcd.print(F("  "));
+      #endif
+      #if !defined(PWM_OUT)
         lcd.print(BCDmatrixOUT[3][BAND]);
         lcd.print(BCDmatrixOUT[2][BAND]);
         lcd.print(BCDmatrixOUT[1][BAND]);
@@ -1034,16 +1082,16 @@ void LcdDisplay(){
       #if defined(EthModule)
       if(RemoteSwLatencyAnsw==1 || (RemoteSwLatencyAnsw==0 && millis() < RemoteSwLatency[0]+RemoteSwLatency[1]*5)){ // if answer ok, or latency measure nod end
       // if(DetectedRemoteSw[NET_ID][4]!=0 && (RemoteSwLatencyAnsw==1 && millis() > RemoteSwLatency[0]+RemoteSwLatency[1]*5)){
-        lcd.print("N");
+        lcd.print(F("N"));
       }else{
-        lcd.print("!");
+        lcd.print(F("!"));
       }
       #else
-      lcd.print("B");
+      lcd.print(F("B"));
       #endif
       Space(2, String(BAND).length(), '-');
       lcd.print(BAND);
-      lcd.print(" ");
+      lcd.print(F(" "));
 
       #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
         Space(7, String(freq/1000).length(), ' ');
@@ -1058,16 +1106,16 @@ void LcdDisplay(){
           // lcd.write(byte(0));        // Lock icon
           lcd.print((char)0);
         }else{
-          lcd.print(" ");        // Lock icon
+          lcd.print(F(" "));        // Lock icon
         }
         #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
           lcd.setCursor(13,1);
-          lcd.print("kHz");
+          lcd.print(F("kHz"));
         #endif
         #if defined(ICOM_ACC)
           lcd.setCursor(10,1);
           lcd.print(AccVoltage);
-          lcd.print(" V");
+          lcd.print(F(" V"));
         #endif
 
       LcdRefresh[0]=millis();
@@ -1085,11 +1133,11 @@ void LcdDisplay(){
   void PrintFreq(){
     int longer=String(freq/1000).length();
     if(longer<4){
-      lcd.print(" ");
+      lcd.print(F(" "));
       lcd.print(freq);
     }else{
       lcd.print(String(freq/1000).substring(0, longer-3));
-      lcd.print(".");
+      lcd.print(F("."));
       lcd.print(String(freq/1000).substring(longer-3, longer));
     }
   }
@@ -1236,7 +1284,7 @@ float volt(int raw, float divider) {
   // float voltage = (raw * 5.0) / 1024.0 * ResistorCoeficient;
   float voltage = float(raw) * ArefVoltage * divider / 1023.0;
   #if defined(SERIAL_debug)
-    Serial.print("Voltage ");
+    Serial.print(F("Voltage "));
     Serial.println(voltage);
   #endif
   return voltage;
@@ -1249,10 +1297,10 @@ void DCinMeasure(){
     #if defined(LCD)
       if (DCinVoltage<7){
         lcd.setCursor(3, 0);
-        lcd.print(" Power LOW!");
+        lcd.print(F(" Power LOW!"));
       }else if (DCinVoltage>15){
         lcd.setCursor(2, 0);
-        lcd.print("Power HIGH!");
+        lcd.print(F("Power HIGH!"));
       }
     #endif
     VoltageRefresh[0] = millis();                      // set time mark
@@ -1266,7 +1314,7 @@ void BandDecoderInput(){
   #endif
 
   //----------------------------------- Select Bank
-  #if defined(MULTI_OUTPUT_BY_BCD)
+  #if defined(MULTI_OUTPUT_BY_BCD) && !defined(PWM_OUT)
     SelectBank=B00000000;
     if(digitalRead(BcdIn1Pin)==0){
       bitSet(SelectBank, 0);
@@ -1338,7 +1386,7 @@ void BandDecoderInput(){
     #if defined(SERIAL_echo)
         serialEcho();
         Serial.print(AccVoltage);
-        Serial.println(" V");
+        Serial.println(F(" V"));
         Serial.flush();
     #endif
 
@@ -1351,7 +1399,7 @@ void BandDecoderInput(){
         incomingByte = Serial.read();
         #if defined(DEBUG)
           Serial.print(incomingByte);
-          Serial.print("|");
+          Serial.print(F("|"));
           Serial.println(incomingByte, HEX);
         #endif
         icomSM(incomingByte);
@@ -1380,7 +1428,7 @@ void BandDecoderInput(){
   #endif
 
   //----------------------------------- Yaesu BCD
-  #if defined(INPUT_BCD)
+  #if defined(INPUT_BCD) && !defined(PWM_OUT)
     if (millis() - BcdInRefresh[0] > BcdInRefresh[1]){
       BAND = 0;
       if(digitalRead(BcdIn1Pin)==BcdInputFormat){
@@ -1497,7 +1545,7 @@ void BandDecoderInput(){
       #if defined(DEBUG)
         byte incomingByte = Serial.read();
         Serial.write(incomingByte);
-        Serial.print(" ");
+        Serial.print(F(" "));
       #else
         Serial.readBytesUntil('240', rdYO, 5);                   // fill array from serial (240 = 0xF0)
         if (rdYO[0] != 0xF0 && rdYO[1] != 0xF0 && rdYO[2] != 0xF0 && rdYO[3] != 0xF0 && rdYO[4] != 0xF0 && rdYO[5] != 0xF0){     // filter
@@ -1570,6 +1618,7 @@ void BandDecoderOutput(){
   #if !defined(REQUEST) && defined(KENWOOD_PC_OUT)
       if(freq != freqPrev2){                     // if change
           String freqPCtx = String(freq);        // to string
+          freqPCtx.reserve(12);
           while (freqPCtx.length() < 11) {       // leding zeros
               freqPCtx = 0 + freqPCtx;
           }
@@ -1610,6 +1659,7 @@ void BandDecoderOutput(){
 //---------------------------------------------------------------------------------------------------------
 
 void bandSET() {                                               // set outputs by BAND variable
+
   if(BAND==0 && previousBAND != 0){    // deactivate PTT
     digitalWrite(PttOffPin, HIGH);
     PTT = true;
@@ -1620,7 +1670,9 @@ void bandSET() {                                               // set outputs by
     digitalWrite(PttOffPin, LOW);
   }
 
+  #if !defined(PTT_BY_BAND)
   if((PTT==false && previousBAND != 0 ) || (PTT==true && previousBAND == 0)){
+  #endif
     for (int i = 0; i < NumberOfBoards; i++) {
       ShiftByte[i] = B00000000;
     }
@@ -1671,7 +1723,7 @@ void bandSET() {                                               // set outputs by
       }
     digitalWrite(ShiftOutLatchPin, HIGH);    // switch to output pin
 
-    #if !defined(INPUT_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
+    #if !defined(INPUT_BCD) && !defined(MULTI_OUTPUT_BY_BCD) && !defined(PWM_OUT)
         bcdOut();
     #endif
 
@@ -1682,7 +1734,13 @@ void bandSET() {                                               // set outputs by
     #if defined(LCD)
       LcdNeedRefresh = true;
     #endif
+  #if !defined(PTT_BY_BAND)
   }
+  #endif
+
+  #if defined(PWM_OUT)
+    analogWrite(PwmOutPin, PwmByBand[BAND]);
+  #endif
 
   // #if defined(EthModule)
   //   if(DetectedRemoteSw[NET_ID][4]==0 || RemoteSwLatencyAnsw==0){
@@ -1734,24 +1792,22 @@ void remoteRelay() {
 //---------------------------------------------------------------------------------------------------------
 
 void serialEcho() {
-    Serial.print("<");
+    Serial.print(F("<"));
     Serial.print(BAND);
-    Serial.print(",");
+    Serial.print(F(","));
     Serial.print(freq);
-    Serial.print("> ");
+    Serial.print(F("> "));
     Serial.println(ShiftByte[0], BIN);
     Serial.flush();
 }
 //---------------------------------------------------------------------------------------------------------
 
-#if !defined(INPUT_BCD) || !defined(MULTI_OUTPUT_BY_BCD)
-    void bcdOut(){
-        if (BCDmatrixOUT[0][BAND] == 1){ digitalWrite(BcdIn1Pin, HIGH); }else{ digitalWrite(BcdIn1Pin, LOW);}
-        if (BCDmatrixOUT[1][BAND] == 1){ digitalWrite(BcdIn2Pin, HIGH); }else{ digitalWrite(BcdIn2Pin, LOW);}
-        if (BCDmatrixOUT[2][BAND] == 1){ digitalWrite(BcdIn3Pin, HIGH); }else{ digitalWrite(BcdIn3Pin, LOW);}
-        if (BCDmatrixOUT[3][BAND] == 1){ digitalWrite(BcdIn4Pin, HIGH); }else{ digitalWrite(BcdIn4Pin, LOW);}
-    }
-#endif
+void bcdOut(){
+    if (BCDmatrixOUT[0][BAND] == 1){ digitalWrite(BcdIn1Pin, HIGH); }else{ digitalWrite(BcdIn1Pin, LOW);}
+    if (BCDmatrixOUT[1][BAND] == 1){ digitalWrite(BcdIn2Pin, HIGH); }else{ digitalWrite(BcdIn2Pin, LOW);}
+    if (BCDmatrixOUT[2][BAND] == 1){ digitalWrite(BcdIn3Pin, HIGH); }else{ digitalWrite(BcdIn3Pin, LOW);}
+    if (BCDmatrixOUT[3][BAND] == 1){ digitalWrite(BcdIn4Pin, HIGH); }else{ digitalWrite(BcdIn4Pin, LOW);}
+}
 //---------------------------------------------------------------------------------------------------------
 
 void watchDog() {
@@ -1836,6 +1892,7 @@ FE|FE|0|56|0|30| 0| 0|53|0|FD
     //---------------------------------------------------------------------------------------------------------
     byte PartFreqToByte(long FREQ, int PART){
       String StrFreq=String(FREQ);
+      StrFreq.reserve(10);
       while (StrFreq.length() < 10){                 // leding zeros
         StrFreq = 0 + StrFreq;
       }
@@ -1854,7 +1911,9 @@ FE|FE|0|56|0|30| 0| 0|53|0|FD
         Serial.write(commandCIV);                             // data
         if (dataCIVtx != 0){
             String freqCIVtx = String(dataCIVtx);             // to string
+            freqCIVtx.reserve(11);
             String freqCIVtxPart;
+            freqCIVtxPart.reserve(11);
             while (freqCIVtx.length() < 10) {                 // leding zeros
                 freqCIVtx = 0 + freqCIVtx;
             }
@@ -1872,6 +1931,7 @@ FE|FE|0|56|0|30| 0| 0|53|0|FD
     //---------------------------------------------------------------------------------------------------------
 
     unsigned int hexToDec(String hexString) {
+        hexString.reserve(2);
         unsigned int decValue = 0;
         int nextInt;
         for (int i = 0; i < hexString.length(); i++) {
