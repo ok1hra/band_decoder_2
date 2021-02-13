@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20201011";
+const char* REV = "20210213";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -59,6 +59,7 @@ Outputs
 
   Changelog
   ---------
+  2021-02 23cm (IC9700) state machine
   2020-10 PWM (analog) output
   2020-07 PTT by band
   2020-02 fix out set
@@ -108,7 +109,7 @@ int BcdInputFormat = 0;         // if enable INPUT_BCD, set format 0 - YAESU, 1 
 const byte LcdI2Caddress = 0x27; // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
 //#define LCD_PCF8574              // If LCD uses PCF8574 chip
 #define LCD_PCF8574T             // If LCD uses PCF8574T chip
-//#define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
+// #define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
 
 // #define EthModule             // enable Ethernet module if installed
 // #define __USE_DHCP__          // enable DHCP
@@ -500,7 +501,7 @@ void setup() {
 
 //    lcd.createChar(0, LockChar);
     #if defined(EthModule)
-      lcd.createChar(1, EthChar);
+      // lcd.createChar(1, EthChar);
     #endif
     lcd.clear();
     lcd.setCursor(0,0);
@@ -566,7 +567,7 @@ void loop() {
   FrequencyRequest();
   PttOff();
   #if defined(EthModule)
-    RX_UDP(RemoteDevice, ThisDevice);
+    // RX_UDP(RemoteDevice, ThisDevice);
     EthernetCheck();
     // WebServer();
   #endif
@@ -730,23 +731,25 @@ void RX_UDP(char FROM, char TO){
           DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [3]=TmpAddr[3];
           DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [4]=UdpCommand.remotePort();
 
-          lcd.clear();
-          lcd.setCursor(0, 0);
-          lcd.print(F("Detect SW #"));
-          lcd.print(packetBuffer[0], HEX);
-          lcd.setCursor(0, 1);
-          lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [0]);
-          lcd.print(F("."));
-          lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [1]);
-          lcd.print(F("."));
-          lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [2]);
-          lcd.print(F("."));
-          lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [3]);
-          lcd.print(F(":"));
-          lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [4]);
-          delay(4000);
-          LcdNeedRefresh = true;
-          lcd.clear();
+          #if defined(LCD)
+            lcd.clear();
+            lcd.setCursor(0, 0);
+            lcd.print(F("Detect SW #"));
+            lcd.print(packetBuffer[0], HEX);
+            lcd.setCursor(0, 1);
+            lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [0]);
+            lcd.print(F("."));
+            lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [1]);
+            lcd.print(F("."));
+            lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [2]);
+            lcd.print(F("."));
+            lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [3]);
+            lcd.print(F(":"));
+            lcd.print(DetectedRemoteSw [hexToDecBy4bit(packetBuffer[0])] [4]);
+            delay(4000);
+            LcdNeedRefresh = true;
+            lcd.clear();
+          #endif
 
           #if defined(SERIAL_debug)
             Serial.print(F("RX ["));
@@ -801,7 +804,9 @@ void RX_UDP(char FROM, char TO){
             Serial.print(F(" Latency: "));
             Serial.println(RemoteSwLatency[1]);
           #endif
-          LcdNeedRefresh = true;
+          #if defined(LCD)
+            LcdNeedRefresh = true;
+          #endif
         }
       } // filtered end
       else{
@@ -830,39 +835,48 @@ void EthernetCheck(){
         Serial.println(F("Ethernet CONNECTED"));
       #endif
 
-      lcd.clear();
-      lcd.setCursor(1, 0);
-      lcd.print(F("Net-ID: "));
-      lcd.print(NET_ID);
-      lcd.setCursor(1, 1);
-      lcd.print(F("[DHCP-"));
+      #if defined(LCD)
+        lcd.clear();
+        lcd.setCursor(1, 0);
+        lcd.print(F("Net-ID: "));
+        lcd.print(NET_ID);
+        lcd.setCursor(1, 1);
+        lcd.print(F("[DHCP-"));
+      #endif
       if(EnableDHCP==1){
+        #if defined(LCD)
           lcd.print(F("ON]..."));
+        #endif
           Ethernet.begin(mac);
           IPAddress CheckIP = Ethernet.localIP();
           if( CheckIP[0]==0 && CheckIP[1]==0 && CheckIP[2]==0 && CheckIP[3]==0 ){
-            lcd.clear();
-            lcd.setCursor(1, 0);
-            lcd.print(F("DHCP FAIL"));
-            lcd.setCursor(1, 1);
-            lcd.print(F("please restart"));
+            #if defined(LCD)
+              lcd.clear();
+              lcd.setCursor(1, 0);
+              lcd.print(F("DHCP FAIL"));
+              lcd.setCursor(1, 1);
+              lcd.print(F("please restart"));
+            #endif
             while(1) {
               // infinite loop
             }
           }
       }else{
-        lcd.print(F("OFF]"));
+        #if defined(LCD)
+          lcd.print(F("OFF]"));
+        #endif
         Ethernet.begin(mac, ip, myDns, gateway, subnet);
       }
-
         delay(2000);
-        lcd.clear();
-        lcd.setCursor(1, 0);
-        lcd.print(F("IP address:"));
-        lcd.setCursor(1, 1);
-        lcd.print(Ethernet.localIP());
-        delay(2500);
-        lcd.clear();
+        #if defined(LCD)
+          lcd.clear();
+          lcd.setCursor(1, 0);
+          lcd.print(F("IP address:"));
+          lcd.setCursor(1, 1);
+          lcd.print(Ethernet.localIP());
+          delay(2500);
+          lcd.clear();
+        #endif
 
       server.begin();                     // Web
       UdpCommand.begin(UdpCommandPort);   // UDP
@@ -1822,9 +1836,14 @@ void watchDog() {
 //---------------------------------------------------------------------------------------------------------
 
 #if defined(ICOM_CIV) || defined(ICOM_CIV_OUT)
-/*
+/*http://www.plicht.de/ekki/civ/civ-p0a.html
 FE|FE|0|56|0|70|99|99|52|0|FD
 FE|FE|0|56|0|30| 0| 0|53|0|FD
+IC9700
+FE|FE|0|A2|0|80|48| 6|44|1|FD 2m
+FE|FE|0|A2|0| 0|50|11|32|4|FD 70cm
+FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
+
 */
     int icomSM(byte b){      // state machine
         // This filter solves read from 0x00 0x05 0x03 commands and 00 E0 F1 address used by software
@@ -1861,7 +1880,8 @@ FE|FE|0|56|0|30| 0| 0|53|0|FD
            case 11: if( b <= 0x52 ){state = 12; rdI[8]=b;            // 10MHz 1Mhz
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
-           case 12: if( b <= 0x01 || b == 0x04){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx MHz limit
+           // case 12: if( b <= 0x01 || b == 0x04){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx MHz limit
+           case 12: if( b <= 0x01 || b == 0x12){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/12xx MHz limit
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
            case 13: if( b == 0xFD ){state = 1; rdI[10]=b; StateMachineEnd = true;
