@@ -1850,6 +1850,7 @@ FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
         // Serial.print(b, HEX);
         // Serial.print(" | ");
         // Serial.println(state);
+        bool Band23cm = false;
         switch (state) {
             case 1: if( b == 0xFE ){ state = 2; rdI[0]=b; rdI[10]=0x00; }; break;
             case 2: if( b == 0xFE ){ state = 3; rdI[1]=b; }else{ state = 1;}; break;
@@ -1877,11 +1878,12 @@ FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
            case 10: if( b <= 0x99 ){state = 11; rdI[7]=b;            // 100kHz 10kHz
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
-           case 11: if( b <= 0x52 ){state = 12; rdI[8]=b;            // 10MHz 1Mhz
+           case 11: if( b <= 0x52 || b == 0x96 ){state = 12; rdI[8]=b;            // 10MHz 1Mhz
+                    if(b == 0x96){Band23cm=true;};
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
            // case 12: if( b <= 0x01 || b == 0x04){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx MHz limit
-           case 12: if( b <= 0x01 || b == 0x12){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/12xx MHz limit
+           case 12: if( b <= 0x01 || b == 0x04 || (b == 0x12 && Band23cm==true) ){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx/12xx MHz limit
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
            case 13: if( b == 0xFD ){state = 1; rdI[10]=b; StateMachineEnd = true;
