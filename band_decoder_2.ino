@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20210213";
+const char* REV = "20210215";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -59,7 +59,7 @@ Outputs
 
   Changelog
   ---------
-  2021-02 23cm (IC9700) state machine
+  2021-02 add 23cm (IC9700) Icom state machine
   2020-10 PWM (analog) output
   2020-07 PTT by band
   2020-02 fix out set
@@ -1837,6 +1837,10 @@ void watchDog() {
 
 #if defined(ICOM_CIV) || defined(ICOM_CIV_OUT)
 /*http://www.plicht.de/ekki/civ/civ-p0a.html
+stty -F /dev/ttyUSB3 115200 raw -echo -echoe -echok -echoctl -echoke
+echo -n -e '\xFE\xFE\x00\xA2\x00\x80\x48\x06\x44\x01\xFD' > /dev/ttyUSB3
+echo -n -e '\xFE\xFE\x00\xA2\x00\x00\x50\x11\x32\x04\xFD' > /dev/ttyUSB3
+echo -n -e '\xFE\xFE\x00\xA2\x00\x00\x20\x30\x96\x12\xFD' > /dev/ttyUSB3
 FE|FE|0|56|0|70|99|99|52|0|FD
 FE|FE|0|56|0|30| 0| 0|53|0|FD
 IC9700
@@ -1847,10 +1851,14 @@ FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
 */
     int icomSM(byte b){      // state machine
         // This filter solves read from 0x00 0x05 0x03 commands and 00 E0 F1 address used by software
+        static bool Band23cm;
+
         // Serial.print(b, HEX);
         // Serial.print(" | ");
-        // Serial.println(state);
-        bool Band23cm = false;
+        // Serial.print(state);
+        // Serial.print(" | ");
+        // Serial.println(Band23cm);
+
         switch (state) {
             case 1: if( b == 0xFE ){ state = 2; rdI[0]=b; rdI[10]=0x00; }; break;
             case 2: if( b == 0xFE ){ state = 3; rdI[1]=b; }else{ state = 1;}; break;
@@ -1876,13 +1884,13 @@ FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
            case 10: if( b <= 0x99 ){state = 11; rdI[7]=b;            // 100kHz 10kHz
+                    Band23cm = false;
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
-           case 11: if( b <= 0x52 || b == 0x96 ){state = 12; rdI[8]=b;            // 10MHz 1Mhz
-                    if(b == 0x96){Band23cm=true;};
+           case 11: if( b <= 0x52 || b == 0x96 ){ state = 12; rdI[8]=b;            // 10MHz 1Mhz
+                    if(b == 0x96){ Band23cm = true; }
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
-                    }else{state = 1;}; break;
-           // case 12: if( b <= 0x01 || b == 0x04){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx MHz limit
+                    }else{ state = 1; } break;
            case 12: if( b <= 0x01 || b == 0x04 || (b == 0x12 && Band23cm==true) ){state = 13; rdI[9]=b; // 1GHz 100MHz  <-- 1xx/4xx/12xx MHz limit
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
