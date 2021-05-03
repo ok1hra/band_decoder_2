@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20210215";
+const char* REV = "20210503";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -59,6 +59,7 @@ Outputs
 
   Changelog
   ---------
+  2021-05 Lock char bug fix
   2021-02 add 23cm (IC9700) Icom state machine
   2020-10 PWM (analog) output
   2020-07 PTT by band
@@ -107,9 +108,9 @@ int BcdInputFormat = 0;         // if enable INPUT_BCD, set format 0 - YAESU, 1 
 
 #define LCD                      // Uncoment to Enable I2C LCD
 const byte LcdI2Caddress = 0x27; // 0x27 0x3F - may be find with I2C scanner https://playground.arduino.cc/Main/I2cScanner
-//#define LCD_PCF8574              // If LCD uses PCF8574 chip
-#define LCD_PCF8574T             // If LCD uses PCF8574T chip
-// #define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
+// #define LCD_PCF8574              // If LCD uses PCF8574 chip
+// #define LCD_PCF8574T             // If LCD uses PCF8574T chip
+#define LCD_PCF8574AT            // If LCD uses PCF8574AT chip
 
 // #define EthModule             // enable Ethernet module if installed
 // #define __USE_DHCP__          // enable DHCP
@@ -499,7 +500,7 @@ void setup() {
       //------------------------------------------------------
     #endif
 
-//    lcd.createChar(0, LockChar);
+   lcd.createChar(0, LockChar);
     #if defined(EthModule)
       // lcd.createChar(1, EthChar);
     #endif
@@ -1119,6 +1120,7 @@ void LcdDisplay(){
         if(PTT==true){
           // lcd.write(byte(0));        // Lock icon
           lcd.print((char)0);
+          // lcd.write(0);
         }else{
           lcd.print(F(" "));        // Lock icon
         }
