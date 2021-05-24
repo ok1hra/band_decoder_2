@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20210503";
+const char* REV = "20210524";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -59,7 +59,7 @@ Outputs
 
   Changelog
   ---------
-  2021-05 Lock char bug fix
+  2021-05 Lock char bug fix, add Icom 70MHz support
   2021-02 add 23cm (IC9700) Icom state machine
   2020-10 PWM (analog) output
   2020-07 PTT by band
@@ -1849,6 +1849,8 @@ IC9700
 FE|FE|0|A2|0|80|48| 6|44|1|FD 2m
 FE|FE|0|A2|0| 0|50|11|32|4|FD 70cm
 FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
+IC7300
+FE|FE|0|74|0|0|0|15|70|0|FD 70 MHz
 
 */
     int icomSM(byte b){      // state machine
@@ -1889,7 +1891,7 @@ FE|FE|0|A2|0| 0|20|30|96|12|FD 23cm
                     Band23cm = false;
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
-           case 11: if( b <= 0x52 || b == 0x96 ){ state = 12; rdI[8]=b;            // 10MHz 1Mhz
+           case 11: if( b <= 0x52 || b == 0x70 || b == 0x96 ){ state = 12; rdI[8]=b;  // 10MHz 1Mhz
                     if(b == 0x96){ Band23cm = true; }
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{ state = 1; } break;
