@@ -1,5 +1,5 @@
 #include <Arduino.h>
-const char* REV = "20210524";
+const char* REV = "20210527";
 /*
 
   Band decoder MK2 with TRX control output for Arduino
@@ -1125,8 +1125,8 @@ void LcdDisplay(){
           lcd.print(F(" "));        // Lock icon
         }
         #if !defined(INPUT_BCD) && !defined(ICOM_ACC)
-          lcd.setCursor(13,1);
-          lcd.print(F("kHz"));
+          lcd.setCursor(12,1);
+          lcd.print(F(" kHz"));
         #endif
         #if defined(ICOM_ACC)
           lcd.setCursor(10,1);
@@ -1891,7 +1891,7 @@ FE|FE|0|74|0|0|0|15|70|0|FD 70 MHz
                     Band23cm = false;
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{state = 1;}; break;
-           case 11: if( b <= 0x52 || b == 0x70 || b == 0x96 ){ state = 12; rdI[8]=b;  // 10MHz 1Mhz
+           case 11: if( b <= 0x54 || b == 0x70 || b == 0x96 ){ state = 12; rdI[8]=b;  // 10MHz 1Mhz
                     if(b == 0x96){ Band23cm = true; }
                     }else if( b == 0xFE ){ state = 2; rdI[0]=b;      // FE
                     }else{ state = 1; } break;
