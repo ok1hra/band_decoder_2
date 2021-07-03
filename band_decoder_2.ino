@@ -128,7 +128,7 @@ byte NET_ID = 0x00;         // NetID [hex] MUST BE UNIQUE IN NETWORK - replace b
 // #define DEBUG              // enable some debugging
 //=====[ FREQUEN RULES ]===========================================================================================
 
-const long Freq2Band[16][2] = {/*
+const uint32_t /*long */ Freq2Band[16][2] = {/*
 Freq Hz from       to   Band number
 */   {1810000,   2000000},  // #1 [160m]
      {3500000,   3800000},  // #2  [80m]
@@ -251,7 +251,7 @@ IN    ) Band 7 --> */ { 0,  0,  0,  0,  0,  0,  0x0F,  0,    0,  0,  0,  0,  0, 
   #endif
 
 
-  long LcdRefresh[2]{0,500};
+ uint32_t /* long */ LcdRefresh[2]{0,500};
   const char* ANTname[17][4] = {
 
 /*
@@ -358,7 +358,7 @@ const int ShiftOutClockPin = 9;   // CLOCK
 
 int BAND = 0;
 int previousBAND = -1;
-long freq = 0;
+uint32_t /*long */ freq = 0;
 bool PTT = false;
 long PttTiming[2]={0, 10};            // debouncing time and also minimal PTT on time in ms
 float DCinVoltage;
@@ -368,7 +368,7 @@ float DCinVoltage;
   float ResistorCoeficient = 6.0;
 #endif
 
-long VoltageRefresh[2] = {0, 3000};   // refresh in ms
+uint32_t /*long */ VoltageRefresh[2] = {0, 3000};   // refresh in ms
 float ArefVoltage = 4.303;            // Measure on Aref pin 20 for calibrate
 float Divider = 1;
 
@@ -376,7 +376,7 @@ byte ShiftByte[NumberOfBoards];
 
 // int SelectOut = 0;
 // int x;
-  long RequestTimeout[2]={0,
+  uint32_t /*long */ RequestTimeout[2]={0,
     #if defined(REQUEST)
       REQUEST
     #else
@@ -391,7 +391,7 @@ int timeout2;
 #if defined(WATCHDOG)
     int previous;
     int timeout;
-    long WatchdogTimeout[2] = {-WATCHDOG*1000, WATCHDOG*1000};
+  long WatchdogTimeout[2] = {-WATCHDOG*1000, WATCHDOG*1000};
 #endif
 #if defined(ICOM_ACC)
     float AccVoltage = 0;
@@ -967,7 +967,7 @@ void PttOff(){
 
 void FrequencyRequest(){
   #if defined(REQUEST)
-  if(REQUEST > 0 && (millis() - RequestTimeout[0] > RequestTimeout[1])){
+  if(REQUEST > 0 && ((millis() - RequestTimeout[0]) > RequestTimeout[1])){
 
     #if defined(ICOM_CIV)
       txCIV(3, 0, CIV_ADRESS);  // ([command], [freq]) 3=read
@@ -1266,7 +1266,7 @@ void WebServer(){
 
 void NetId(){
   #if defined(EthModule)
-  if(millis()-GetNetIdTimer[0]>GetNetIdTimer[1]){
+  if((millis()-GetNetIdTimer[0])>GetNetIdTimer[1]){
     if(NET_ID != GetBoardId()){
       NET_ID = GetBoardId();
       TxUDP(ThisDevice, RemoteDevice, 'b', 'r', 'o');
@@ -1308,7 +1308,7 @@ float volt(int raw, float divider) {
 //-------------------------------------------------------------------------------------------------------
 
 void DCinMeasure(){
-  if (millis() - VoltageRefresh[0] > VoltageRefresh[1]){
+  if ((millis() - VoltageRefresh[0]) > VoltageRefresh[1]){
     DCinVoltage = volt(analogRead(VoltagePin), ResistorCoeficient);
     #if defined(LCD)
       if (DCinVoltage<7){
@@ -1713,22 +1713,22 @@ void bandSET() {                                               // set outputs by
       }
       for (int i = 8; i < 16; i++) {   // outputs 9-16
         if(matrix[BAND][i]>0){
-          ShiftByte[1] = ShiftByte[1] | (1<<i-8);
+          ShiftByte[1] = ShiftByte[1] | (1<<(i-8));
         }
       }
       for (int i = 16; i < 24; i++) {   // outputs 17-24
         if(matrix[BAND][i]>0){
-          ShiftByte[2] = ShiftByte[2] | (1<<i-16);
+          ShiftByte[2] = ShiftByte[2] | (1<<(i-16));
         }
       }
       for (int i = 24; i < 32; i++) {   // outputs 25-32
         if(matrix[BAND][i]>0){
-          ShiftByte[3] = ShiftByte[3] | (1<<i-24);
+          ShiftByte[3] = ShiftByte[3] | (1<<(i-24));
         }
       }
       for (int i = 32; i < 40; i++) {   // outputs 33-40
         if(matrix[BAND][i]>0){
-          ShiftByte[4] = ShiftByte[4] | (1<<i-32);
+          ShiftByte[4] = ShiftByte[4] | (1<<(i-32));
         }
       }
     #endif
@@ -1968,7 +1968,7 @@ FE|FE|0|74|0|0|0|15|70|0|FD 70 MHz
         hexString.reserve(2);
         unsigned int decValue = 0;
         int nextInt;
-        for (int i = 0; i < hexString.length(); i++) {
+        for (uint8_t i = 0; i < hexString.length(); i++) {
             nextInt = int(hexString.charAt(i));
             if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
             if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
